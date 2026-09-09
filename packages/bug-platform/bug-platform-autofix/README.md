@@ -2,7 +2,7 @@
 
 English | [中文](README.zh.md)
 
-Library-first helpers for internal bug-platform autofix: load `menu-mapping.json`, resolve a ticket `target_menu` to a custom/ailpha worktree hit, filter list rows, keep a local JSON idempotency store, and run per-worktree Git helpers (`assertProductBranch`, `assertClean`, `createBugfixBranch`, `commitAll`, `pushBranch`, `listChangedFiles`) with an injectable `RunGit`. Phase 1 keeps Cordis `apply` as a Config stub (empty inject); orchestration imports helpers directly.
+Library-first helpers for internal bug-platform autofix: load `menu-mapping.json`, resolve a ticket `target_menu` to a custom/ailpha worktree hit, filter list rows, keep a local JSON idempotency store, run per-worktree Git helpers (`assertProductBranch`, `assertClean`, `createBugfixBranch`, `commitAll`, `pushBranch`, `listChangedFiles`) with an injectable `RunGit`, and optionally open a GitLab MR via `createMergeRequest`. Phase 1 keeps Cordis `apply` as a Config stub (empty inject); orchestration imports helpers directly.
 
 ## Config
 
@@ -23,6 +23,10 @@ Library-first helpers for internal bug-platform autofix: load `menu-mapping.json
 ## Git workspace
 
 Helpers take a single `localRoot` and never switch product jinan across worktrees. `assertProductBranch(localRoot, expectedJinan)` allows that jinan or `bugfix/<digits>`; it hard-fails when HEAD is a different `*-jinan`. `assertClean` requires empty porcelain status. `createBugfixBranch` reuses HEAD when already on `bugfix/<id>`, checks out an existing branch, or `checkout -b` from the current HEAD. `commitAll` runs `add -A` + `commit` and returns `rev-parse HEAD`. `pushBranch` runs `push -u origin <branch>`. `listChangedFiles` parses porcelain paths. Pass `runGit(cwd, args)` to inject fakes in tests; omit it to use `defaultRunGit`.
+
+## Optional GitLab MR
+
+`createMergeRequest({ host, projectId, token, sourceBranch, targetBranch, title, description, fetchImpl? })` POSTs `/api/v4/projects/:id/merge_requests` with a `PRIVATE-TOKEN` header and returns `{ webUrl }` from `web_url`. Missing, null, or empty `token` throws `GitlabTokenMissingError` so orchestration can keep `处理中` / `awaiting_push` instead of claiming `现场验证`. Inject `fetchImpl` in tests.
 
 ## Model Experience
 

@@ -19,6 +19,8 @@ describe('bug-platform-autofix plugin', () => {
     expect(typeof BugPlatformAutofix.commitAll).toBe('function')
     expect(typeof BugPlatformAutofix.pushBranch).toBe('function')
     expect(typeof BugPlatformAutofix.listChangedFiles).toBe('function')
+    expect(typeof BugPlatformAutofix.createMergeRequest).toBe('function')
+    expect(BugPlatformAutofix.GitlabTokenMissingError).toBeTypeOf('function')
   })
 
   it('accepts fully defaulted Config in apply', () => {

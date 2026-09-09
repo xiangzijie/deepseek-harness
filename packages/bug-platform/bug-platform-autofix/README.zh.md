@@ -2,7 +2,7 @@
 
 [English](README.md) | 中文
 
-面向内部 bug 平台自动修复的库优先辅助：加载 `menu-mapping.json`，将工单的 `target_menu` 解析到 custom／ailpha 工作区命中项，过滤列表行，维护本地 JSON 幂等状态，并提供按工作区隔离的 Git 辅助（`assertProductBranch`、`assertClean`、`createBugfixBranch`、`commitAll`、`pushBranch`、`listChangedFiles`，可注入 `RunGit`）。第一阶段 Cordis `apply` 仅作 Config 桩（`inject` 为空）；编排直接导入辅助函数。
+面向内部 bug 平台自动修复的库优先辅助：加载 `menu-mapping.json`，将工单的 `target_menu` 解析到 custom／ailpha 工作区命中项，过滤列表行，维护本地 JSON 幂等状态，提供按工作区隔离的 Git 辅助（`assertProductBranch`、`assertClean`、`createBugfixBranch`、`commitAll`、`pushBranch`、`listChangedFiles`，可注入 `RunGit`），并可选通过 `createMergeRequest` 创建 GitLab MR。第一阶段 Cordis `apply` 仅作 Config 桩（`inject` 为空）；编排直接导入辅助函数。
 
 ## Config
 
@@ -23,6 +23,10 @@
 ## Git 工作区
 
 辅助函数只接受单个 `localRoot`，不会跨工作区切换产品 jinan。`assertProductBranch(localRoot, expectedJinan)` 允许该 jinan 或 `bugfix/<digits>`；若 HEAD 是另一条 `*-jinan` 则硬失败。`assertClean` 要求 porcelain 状态为空。`createBugfixBranch`：已在 `bugfix/<id>` 则复用；分支已存在则 checkout；否则从当前 HEAD `checkout -b`。`commitAll` 执行 `add -A` + `commit` 并返回 `rev-parse HEAD`。`pushBranch` 执行 `push -u origin <branch>`。`listChangedFiles` 解析 porcelain 路径。测试可传入 `runGit(cwd, args)`；省略则使用 `defaultRunGit`。
+
+## 可选 GitLab MR
+
+`createMergeRequest({ host, projectId, token, sourceBranch, targetBranch, title, description, fetchImpl? })` 以 `PRIVATE-TOKEN` 请求头 POST `/api/v4/projects/:id/merge_requests`，返回 `{ webUrl }`（来自响应 `web_url`）。`token` 缺失、为 null 或空字符串时抛出 `GitlabTokenMissingError`，编排可保持 `处理中`／`awaiting_push`，不得标 `现场验证`。测试可注入 `fetchImpl`。
 
 ## 模型体验
 

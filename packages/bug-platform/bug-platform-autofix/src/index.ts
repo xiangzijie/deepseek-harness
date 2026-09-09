@@ -1,8 +1,8 @@
 /**
  * `@deepseek-ai/dsh-bug-platform-autofix`: library-first menu mapping, ticket
- * selection, local idempotency, and per-worktree Git helpers for internal
- * bug-platform autofix. Cordis `apply` validates Config only; callers import
- * helpers directly.
+ * selection, local idempotency, per-worktree Git helpers, and optional GitLab
+ * MR creation for internal bug-platform autofix. Cordis `apply` validates
+ * Config only; callers import helpers directly.
  *
  * @module @deepseek-ai/dsh-bug-platform-autofix
  */
@@ -38,6 +38,9 @@ export {
   listChangedFiles,
   pushBranch,
 } from './git-workspace.ts'
+
+export type { CreateMergeRequestOptions } from './gitlab-mr.ts'
+export { createMergeRequest, GitlabTokenMissingError } from './gitlab-mr.ts'
 
 /** Cordis plugin name used by loader diagnostics. */
 export const name = 'bug-platform-autofix'
