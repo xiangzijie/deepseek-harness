@@ -983,6 +983,9 @@ importers:
 
   packages/bug-platform/bug-platform-autofix:
     dependencies:
+      '@deepseek-ai/dsh-bug-platform-http':
+        specifier: workspace:^
+        version: link:../bug-platform-http
       '@deepseek-ai/schemastery':
         specifier: link:../../../vendor/schemastery
         version: link:../../../vendor/schemastery

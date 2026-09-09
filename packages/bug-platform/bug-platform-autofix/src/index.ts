@@ -1,8 +1,9 @@
 /**
  * `@deepseek-ai/dsh-bug-platform-autofix`: library-first menu mapping, ticket
- * selection, local idempotency, per-worktree Git helpers, and optional GitLab
- * MR creation for internal bug-platform autofix. Cordis `apply` validates
- * Config only; callers import helpers directly.
+ * selection, local idempotency, per-worktree Git helpers, optional GitLab MR
+ * creation, and the §3 orchestrator (`runOneTicket` / `runBatch`) for internal
+ * bug-platform autofix. Cordis `apply` validates Config only; callers import
+ * helpers directly.
  *
  * @module @deepseek-ai/dsh-bug-platform-autofix
  */
@@ -41,6 +42,28 @@ export {
 
 export type { CreateMergeRequestOptions } from './gitlab-mr.ts'
 export { createMergeRequest, GitlabTokenMissingError } from './gitlab-mr.ts'
+
+export type { AgentBriefInput } from './agent-brief.ts'
+export { buildAgentBrief } from './agent-brief.ts'
+
+export type {
+  AgentRunner,
+  AgentRunnerOptions,
+  AgentRunnerResult,
+  DefaultAgentRunnerOptions,
+} from './run-agent.ts'
+export { createDefaultAgentRunner } from './run-agent.ts'
+
+export type {
+  LintRunner,
+  OrchestratorClient,
+  OrchestratorConfig,
+  OrchestratorGitlabConfig,
+  ProductBranches,
+  RunBatchOptions,
+  TicketOutcome,
+} from './orchestrator.ts'
+export { runBatch, runOneTicket } from './orchestrator.ts'
 
 /** Cordis plugin name used by loader diagnostics. */
 export const name = 'bug-platform-autofix'

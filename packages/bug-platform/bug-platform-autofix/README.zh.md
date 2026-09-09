@@ -2,7 +2,7 @@
 
 [English](README.md) | 中文
 
-面向内部 bug 平台自动修复的库优先辅助：加载 `menu-mapping.json`，将工单的 `target_menu` 解析到 custom／ailpha 工作区命中项，过滤列表行，维护本地 JSON 幂等状态，提供按工作区隔离的 Git 辅助（`assertProductBranch`、`assertClean`、`createBugfixBranch`、`commitAll`、`pushBranch`、`listChangedFiles`，可注入 `RunGit`），并可选通过 `createMergeRequest` 创建 GitLab MR。第一阶段 Cordis `apply` 仅作 Config 桩（`inject` 为空）；编排直接导入辅助函数。
+面向内部 bug 平台自动修复的库优先辅助：加载 `menu-mapping.json`，将工单的 `target_menu` 解析到 custom／ailpha 工作区命中项，过滤列表行，维护本地 JSON 幂等状态，提供按工作区隔离的 Git 辅助（`assertProductBranch`、`assertClean`、`createBugfixBranch`、`commitAll`、`pushBranch`、`listChangedFiles`，可注入 `RunGit`），可选通过 `createMergeRequest` 创建 GitLab MR，并用 `runOneTicket`／`runBatch` 编排单票或跑批。第一阶段 Cordis `apply` 仅作 Config 桩（`inject` 为空）；编排直接导入辅助函数。
 
 ## Config
 
@@ -28,9 +28,13 @@
 
 `createMergeRequest({ host, projectId, token, sourceBranch, targetBranch, title, description, fetchImpl? })` 以 `PRIVATE-TOKEN` 请求头 POST `/api/v4/projects/:id/merge_requests`，返回 `{ webUrl }`（来自响应 `web_url`）。`token` 缺失、为 null 或空字符串时抛出 `GitlabTokenMissingError`，编排可保持 `处理中`／`awaiting_push`，不得标 `现场验证`。测试可注入 `fetchImpl`。
 
+## 编排
+
+`runOneTicket(config, ticketIdOrDetail)` 实现领单 → 修复 → Git 状态机。可传入已加载的 `BugTicketDetail` 强制领单（如 `--ticket 428`），绕过列表状态白名单。映射决议在任何 `处理中` followup 之前完成；无映射／home 可选 followup 且 `status_change` 为空／null，不领单。领单：`status_change=处理中`，`assignee_change=null`。领单后再下附件（跳过 `file_size === 0`）。`lintEnabled`／`buildEnabled` 默认 `false`。MR 成功 → followup `现场验证`，`phase=done`；本地已 commit 但 push／MR 失败 → 保持 `处理中`，`phase=awaiting_push`；修复失败／无 diff → 保持 `处理中`，`phase=failed`。错误产品 jinan 硬失败且禁止自动 checkout。`runBatch(config, { maxTickets: 1 })` 先 `ensureToken`，再拉候选并调用 `runOneTicket` 至多 `maxTickets` 次。测试可注入 `agentRunner`、`runGit`、`createMr`；`buildAgentBrief`／`createDefaultAgentRunner` 负责 brief 与默认 `pnpm dsh --profile headless` 拉起。
+
 ## 模型体验
 
-无，因为本包是部署本地的映射库，从不向模型请求贡献 token。
+无，因为本包是部署本地的映射库，从不向模型请求贡献 token。Agent brief 字符串供另一次 headless 运行使用。
 
 #### KV Cache 影响
 
@@ -39,5 +43,5 @@
 ## 已知限制与暂缓事项
 
 - Cordis `apply` 仅校验 Config；不在 `ctx` 上注册编排。
-- Agent brief 构造与跑批编排尚未在本包实现。
+- 默认 agent runner 是薄封装的 `pnpm dsh` spawn；生产应注入超时与更完整的退出解析。
 - `WorkspaceRoots` 含 home 路径类型，但第一期不得改 home。
