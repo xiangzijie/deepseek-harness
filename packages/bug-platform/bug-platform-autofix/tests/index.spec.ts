@@ -13,6 +13,12 @@ describe('bug-platform-autofix plugin', () => {
     expect(typeof BugPlatformAutofix.saveState).toBe('function')
     expect(typeof BugPlatformAutofix.isActive).toBe('function')
     expect(BugPlatformAutofix.TicketStateStore).toBeTypeOf('function')
+    expect(typeof BugPlatformAutofix.assertProductBranch).toBe('function')
+    expect(typeof BugPlatformAutofix.assertClean).toBe('function')
+    expect(typeof BugPlatformAutofix.createBugfixBranch).toBe('function')
+    expect(typeof BugPlatformAutofix.commitAll).toBe('function')
+    expect(typeof BugPlatformAutofix.pushBranch).toBe('function')
+    expect(typeof BugPlatformAutofix.listChangedFiles).toBe('function')
   })
 
   it('accepts fully defaulted Config in apply', () => {

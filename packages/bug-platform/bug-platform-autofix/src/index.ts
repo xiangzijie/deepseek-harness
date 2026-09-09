@@ -1,7 +1,8 @@
 /**
  * `@deepseek-ai/dsh-bug-platform-autofix`: library-first menu mapping, ticket
- * selection, and local idempotency for internal bug-platform autofix. Cordis
- * `apply` validates Config only; callers import helpers directly.
+ * selection, local idempotency, and per-worktree Git helpers for internal
+ * bug-platform autofix. Cordis `apply` validates Config only; callers import
+ * helpers directly.
  *
  * @module @deepseek-ai/dsh-bug-platform-autofix
  */
@@ -26,6 +27,17 @@ export {
   saveState,
   TicketStateStore,
 } from './ticket-state.ts'
+
+export type { RunGit, WorkspaceRoots } from './git-workspace.ts'
+export {
+  assertClean,
+  assertProductBranch,
+  commitAll,
+  createBugfixBranch,
+  defaultRunGit,
+  listChangedFiles,
+  pushBranch,
+} from './git-workspace.ts'
 
 /** Cordis plugin name used by loader diagnostics. */
 export const name = 'bug-platform-autofix'
