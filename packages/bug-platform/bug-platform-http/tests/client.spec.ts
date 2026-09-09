@@ -1,5 +1,9 @@
+import { mkdtemp, readFile, rm } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { BugPlatformClient, createBugPlatformClient } from '../src/client.ts'
+import type { FollowupBody } from '../src/types.ts'
 
 const BASE = 'http://10.20.183.62:8080'
 
@@ -143,6 +147,132 @@ describe('BugPlatformClient.getTicket', () => {
     })
 
     await expect(client(fetchImpl).getTicket(428)).resolves.toEqual(detail)
+  })
+})
+
+describe('BugPlatformClient.createFollowup', () => {
+  it('POSTs /api/bug-tickets/:id/followups with JSON body including nulls', async () => {
+    const body: FollowupBody = {
+      content: '自动修复开始',
+      attachments: null,
+      status_change: '处理中',
+      issue_type_change: null,
+      assignee_change: null,
+      plan_solve_date_change: null,
+    }
+    const fetchImpl = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input)
+      if (url.endsWith('/api/auth/login')) return loginOk()
+      expect(url).toBe(`${BASE}/api/bug-tickets/428/followups`)
+      expect(init?.method).toBe('POST')
+      expect(init?.headers).toEqual(
+        expect.objectContaining({
+          Authorization: 'Bearer tok-1',
+          'content-type': 'application/json',
+        }),
+      )
+      expect(JSON.parse(String(init?.body))).toEqual(body)
+      return jsonResponse({ success: true, data: {} })
+    })
+
+    await expect(client(fetchImpl).createFollowup(428, body)).resolves.toBeUndefined()
+  })
+
+  it('re-logins once and retries createFollowup after 401', async () => {
+    const calls: string[] = []
+    const fetchImpl = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input)
+      calls.push(`${init?.method ?? 'GET'} ${url}`)
+      if (url.endsWith('/api/auth/login')) {
+        return loginOk(calls.filter(c => c.includes('/login')).length === 1 ? 'tok-old' : 'tok-new')
+      }
+      if (url.endsWith('/api/bug-tickets/3/followups')) {
+        const auth = (init?.headers as Record<string, string> | undefined)?.Authorization
+        if (auth === 'Bearer tok-old') {
+          return new Response('unauthorized', { status: 401 })
+        }
+        expect(auth).toBe('Bearer tok-new')
+        expect(JSON.parse(String(init?.body))).toEqual({
+          content: 'retry',
+          status_change: null,
+        })
+        return jsonResponse({ success: true, data: null })
+      }
+      throw new Error(`unexpected ${url}`)
+    })
+
+    await client(fetchImpl).createFollowup(3, { content: 'retry', status_change: null })
+    expect(calls.filter(c => c.includes('/login'))).toHaveLength(2)
+    expect(calls.filter(c => c.includes('/followups'))).toHaveLength(2)
+  })
+})
+
+describe('BugPlatformClient.downloadToFile', () => {
+  it('GETs baseUrl+relative path with Bearer and writes response bytes', async () => {
+    const bytes = Buffer.from([0x89, 0x50, 0x4e, 0x47])
+    const dir = await mkdtemp(join(tmpdir(), 'bug-platform-dl-'))
+    const dest = join(dir, 'shot.png')
+    try {
+      const fetchImpl = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input)
+        if (url.endsWith('/api/auth/login')) return loginOk()
+        expect(url).toBe(`${BASE}/api/uploads/a.png`)
+        expect(init?.method).toBe('GET')
+        expect(init?.headers).toEqual(expect.objectContaining({ Authorization: 'Bearer tok-1' }))
+        return new Response(bytes, { status: 200, headers: { 'content-type': 'image/png' } })
+      })
+
+      await client(fetchImpl).downloadToFile('/api/uploads/a.png', dest)
+      await expect(readFile(dest)).resolves.toEqual(bytes)
+    } finally {
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('re-logins once and retries download after 401', async () => {
+    const bytes = Buffer.from('png-bytes')
+    const dir = await mkdtemp(join(tmpdir(), 'bug-platform-dl-'))
+    const dest = join(dir, 'b.png')
+    try {
+      const fetchImpl = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input)
+        if (url.endsWith('/api/auth/login')) {
+          const n = fetchImpl.mock.calls.filter(([u]) => String(u).endsWith('/api/auth/login')).length
+          return loginOk(n === 1 ? 'tok-old' : 'tok-new')
+        }
+        if (url === `${BASE}/api/uploads/b.png`) {
+          const auth = (init?.headers as Record<string, string> | undefined)?.Authorization
+          if (auth === 'Bearer tok-old') {
+            return new Response('unauthorized', { status: 401 })
+          }
+          expect(auth).toBe('Bearer tok-new')
+          return new Response(bytes, { status: 200 })
+        }
+        throw new Error(`unexpected ${url}`)
+      })
+
+      await client(fetchImpl).downloadToFile('/api/uploads/b.png', dest)
+      await expect(readFile(dest)).resolves.toEqual(bytes)
+    } finally {
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('throws on non-OK download HTTP status', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'bug-platform-dl-'))
+    const dest = join(dir, 'missing.png')
+    try {
+      const fetchImpl = vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input)
+        if (url.endsWith('/api/auth/login')) return loginOk()
+        return new Response('gone', { status: 404 })
+      })
+      await expect(client(fetchImpl).downloadToFile('/api/uploads/missing.png', dest)).rejects.toThrow(
+        /404/,
+      )
+    } finally {
+      await rm(dir, { recursive: true, force: true })
+    }
   })
 })
 

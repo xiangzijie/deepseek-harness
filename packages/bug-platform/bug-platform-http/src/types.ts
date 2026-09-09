@@ -80,3 +80,22 @@ export interface ListTicketsQuery {
   /** Page size; defaults to `50`. */
   pageSize?: number
 }
+
+/**
+ * Body for `POST /api/bug-tickets/:id/followups`.
+ * Null on change fields means leave that field unchanged on the ticket.
+ */
+export interface FollowupBody {
+  /** Human-readable follow-up note. */
+  content: string
+  /** Optional attachments payload; `null` clears / leaves unset per platform rules. */
+  attachments?: BugAttachment[] | null
+  /** New status, or `null` to keep the current status. */
+  status_change?: string | null
+  /** New issue type, or `null` to leave unchanged. */
+  issue_type_change?: string | null
+  /** New assignee id, or `null` to leave assignee unchanged. */
+  assignee_change?: number | null
+  /** Planned solve date, or `null` to leave unchanged. */
+  plan_solve_date_change?: string | null
+}

@@ -1,18 +1,27 @@
 /**
- * Library HTTP client for the internal bug-platform API (login, list, get).
- * Credentials and tokens stay in memory; this module never logs them.
+ * Library HTTP client for the internal bug-platform API (login, list, get,
+ * follow-up write, attachment download). Credentials and tokens stay in memory;
+ * this module never logs them.
  * @module @deepseek-ai/dsh-bug-platform-http/client
  */
 
+import { writeFile } from 'node:fs/promises'
 import type {
   BugPlatformClientOptions,
   BugTicketDetail,
   BugTicketSummary,
+  FollowupBody,
   ListTicketsQuery,
 } from './types.ts'
 
 /** Default list page size when the caller omits `pageSize`. */
 const DEFAULT_PAGE_SIZE = 50
+
+/** Optional JSON body / content-type for authenticated requests. */
+interface AuthorizedInit {
+  body?: string
+  headers?: Record<string, string>
+}
 
 /**
  * Stateful bug-platform HTTP client: one login per process session, Bearer auth,
@@ -74,6 +83,34 @@ export class BugPlatformClient {
     return this.authorizedJson<BugTicketDetail>('GET', `/api/bug-tickets/${id}`)
   }
 
+  /**
+   * `POST /api/bug-tickets/:id/followups` with a JSON body.
+   * Null change fields leave the corresponding ticket field unchanged.
+   * @param id - ticket id.
+   * @param body - follow-up content and optional status/assignee/date changes.
+   */
+  async createFollowup(id: number, body: FollowupBody): Promise<void> {
+    await this.authorizedJson<unknown>('POST', `/api/bug-tickets/${id}/followups`, {
+      body: JSON.stringify(body),
+      headers: { 'content-type': 'application/json' },
+    })
+  }
+
+  /**
+   * Download a Bearer-authenticated relative upload path into `destPath`.
+   * Callers should skip `file_size === 0` before invoking.
+   * @param urlPath - origin-relative path (e.g. `/api/uploads/...`).
+   * @param destPath - local filesystem path to write response bytes.
+   */
+  async downloadToFile(urlPath: string, destPath: string): Promise<void> {
+    const response = await this.authorizedResponse('GET', urlPath)
+    if (!response.ok) {
+      throw new Error(`bug-platform-http: ${urlPath} failed with HTTP ${response.status}`)
+    }
+    const buffer = Buffer.from(await response.arrayBuffer())
+    await writeFile(destPath, buffer)
+  }
+
   /** Perform login, store token, and return it. */
   private async login(): Promise<string> {
     const payload = await this.parseSuccess<{ token: unknown }>(
@@ -95,25 +132,54 @@ export class BugPlatformClient {
    * Authenticated JSON request with one 401 → re-login → retry cycle.
    * @param method - HTTP method.
    * @param path - path beginning with `/`, optionally including a query string.
+   * @param init - optional JSON body and extra headers.
    */
-  private async authorizedJson<T>(method: string, path: string): Promise<T> {
-    const first = await this.sendAuthorized(method, path, await this.ensureToken())
+  private async authorizedJson<T>(
+    method: string,
+    path: string,
+    init?: AuthorizedInit,
+  ): Promise<T> {
+    return this.parseSuccess<T>(await this.authorizedResponse(method, path, init), path)
+  }
+
+  /**
+   * Authenticated request with one 401 → re-login → retry cycle.
+   * @param method - HTTP method.
+   * @param path - path beginning with `/`.
+   * @param init - optional body and headers.
+   * @returns the final Response (may be non-OK for non-401 errors).
+   */
+  private async authorizedResponse(
+    method: string,
+    path: string,
+    init?: AuthorizedInit,
+  ): Promise<Response> {
+    const first = await this.sendAuthorized(method, path, await this.ensureToken(), init)
     if (first.status !== 401) {
-      return this.parseSuccess<T>(first, path)
+      return first
     }
     this.token = undefined
-    const retry = await this.sendAuthorized(method, path, await this.login())
+    const retry = await this.sendAuthorized(method, path, await this.login(), init)
     if (retry.status === 401) {
       throw new Error(`bug-platform-http: ${path} still returned 401 after re-login`)
     }
-    return this.parseSuccess<T>(retry, path)
+    return retry
   }
 
   /** Issue one request with `Authorization: Bearer <token>`. */
-  private sendAuthorized(method: string, path: string, token: string): Promise<Response> {
+  private sendAuthorized(
+    method: string,
+    path: string,
+    token: string,
+    init?: AuthorizedInit,
+  ): Promise<Response> {
     return this.fetchImpl(`${this.baseUrl}${path}`, {
       method,
-      headers: { Authorization: `Bearer ${token}` },
+      headers: {
+        Authorization: `Bearer ${token}`,
+        ...init?.headers,
+      },
+      body: init?.body,
     })
   }
 

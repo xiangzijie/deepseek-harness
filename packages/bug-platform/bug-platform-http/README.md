@@ -16,7 +16,7 @@ Empty strings after defaulting throw at plugin `apply` time. The Cordis plugin i
 
 ## Client
 
-`BugPlatformClient` supports `ensureToken` (login + cache), `listTickets`, and `getTicket`. Authenticated calls send `Authorization: Bearer <token>`. On HTTP 401 the client re-logins once and retries the failed request once. Tokens and passwords are never logged. Follow-up write and attachment download land in a later change.
+`BugPlatformClient` supports `ensureToken` (login + cache), `listTickets`, `getTicket`, `createFollowup`, and `downloadToFile`. Authenticated calls send `Authorization: Bearer <token>`. On HTTP 401 the client re-logins once and retries the failed request once. Tokens and passwords are never logged. Callers skip `file_size === 0` before `downloadToFile`.
 
 ## Model Experience
 
@@ -28,5 +28,4 @@ No effect; the package does not touch model request assembly.
 
 ## Known Limitations and Deferred Work
 
-- **Follow-up and download** — `createFollowup` / `downloadToFile` are not exported yet.
 - Cordis `apply` validates Config only; it does not construct or register the client on `ctx`.

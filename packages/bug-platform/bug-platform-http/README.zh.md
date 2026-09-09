@@ -16,7 +16,7 @@
 
 ## 客户端
 
-`BugPlatformClient` 支持 `ensureToken`（登录并缓存）、`listTickets` 与 `getTicket`。鉴权请求携带 `Authorization: Bearer <token>`。收到 HTTP 401 时重新登录一次并仅重试失败的那次请求。令牌与密码永不写入日志。跟进写入与附件下载将在后续变更落地。
+`BugPlatformClient` 支持 `ensureToken`（登录并缓存）、`listTickets`、`getTicket`、`createFollowup` 与 `downloadToFile`。鉴权请求携带 `Authorization: Bearer <token>`。收到 HTTP 401 时重新登录一次并仅重试失败的那次请求。令牌与密码永不写入日志。调用方应在 `downloadToFile` 前跳过 `file_size === 0`。
 
 ## 模型体验
 
@@ -28,5 +28,4 @@
 
 ## 已知限制与暂缓事项
 
-- **跟进与下载** — 尚未导出 `createFollowup`／`downloadToFile`。
 - Cordis `apply` 仅校验 Config；不在 `ctx` 上构造或注册客户端。

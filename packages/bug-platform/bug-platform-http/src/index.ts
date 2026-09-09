@@ -18,6 +18,7 @@ export type {
   BugScreenshot,
   BugTicketDetail,
   BugTicketSummary,
+  FollowupBody,
   ListTicketsQuery,
 } from './types.ts'
 
