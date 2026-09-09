@@ -53,46 +53,128 @@ Followup 写回字段（已验证）：`content`、`attachments`、`status_chang
 
 可选状态（前端角色可见，以平台为准）：待确认、处理中、转派、不是问题、已处理、未复现、转需求、现场验证等。
 
-### 2.2 代码仓（本地）
+### 2.2 本地工作区（同一远程，三分支三目录）
 
-| 本地路径 | 分支 | 第一期角色 |
-|----------|------|------------|
-| `D:\CODE\COMPANY\dkh-bugFix-project\dkh-custom` | `dkh-custom-jinan` | 新模块；**优先修改** |
-| `D:\CODE\COMPANY\dkh-bugFix-project\dkh-ailpha` | `dkh-ailpha-jinan` | 老旧页面；仅当 custom 无该模块 |
-| `D:\CODE\COMPANY\dkh-bugFix-project\dkh-home` | `dkh-home-jinan` | **默认不改**；映射误指向则跳过 |
+远程为**同一个** GitLab 项目：`jgts/bigdata-web-frontend`
+（`http://gitlab.info.dbappsecurity.com.cn/jgts/bigdata-web-frontend`）
 
-路由入口参考（custom）：`src/routes.js`。各仓路径均可配置。
+本地用**三个独立工作目录**分别检出三条产品分支（已切换到位，名称固定）：
+
+| 本地路径 | 唯一允许的产品分支 | 远程树链接 | 路由入口 | 第一期角色 |
+|----------|-------------------|------------|----------|------------|
+| `D:\CODE\COMPANY\dkh-bugFix-project\dkh-custom` | `dkh-custom-jinan` | `.../tree/dkh-custom-jinan` | `src/routes.js` | 新模块；**优先修改** |
+| `D:\CODE\COMPANY\dkh-bugFix-project\dkh-ailpha` | `dkh-ailpha-jinan` | `.../tree/dkh-ailpha-jinan` | `src/commonRoutes.js` | 老旧页面；仅当 custom 无该模块 |
+| `D:\CODE\COMPANY\dkh-bugFix-project\dkh-home` | `dkh-home-jinan` | `.../tree/dkh-home-jinan` | （第一期不改） | **默认不改**；映射误指向则跳过 |
+
+因 remote 相同，在某一目录里 `git checkout` 到另一条 jinan 分支，就会把「别的产品线代码」检进错误工作区。故硬约束：
+
+- **一单一目录**：映射决议的 `repo`（custom|ailpha|home）决定唯一 `localRoot`；修改 / lint / commit / push / MR 只允许在该目录。
+- **禁止跨目录改代码**：custom 的单不得写入 `dkh-ailpha` 或 `dkh-home` 目录（反之亦然）。
+- **禁止在错误目录切换产品分支**：例如禁止在 `dkh-ailpha` 中 `checkout dkh-custom-jinan`（或任意其它产品 jinan）来改 custom 代码。开跑前校验 `HEAD` 为本目录绑定的 jinan，或本单在**本目录**从该 jinan 拉出的 `bugfix/<ticket_id>`。
+- 三条产品分支名第一期**固定不改配**。
 
 ### 2.3 GitLab
 
-- 远程示例：`http://gitlab.info.dbappsecurity.com.cn/jgts/bigdata-web-frontend`（custom；ailpha/home 各自远程可配置）
-- 策略：优先自动 push + 开 MR（目标分支为对应 jinan 分支）；失败则本地 commit，平台保持 `处理中` 并注明待人工推送
+- 项目 path：`jgts/bigdata-web-frontend`（三工作区共用同一 remote）
+- MR：在对应工作区内 push `bugfix/<id>`，目标分支为**该工作区绑定的 jinan**（custom 单 → `dkh-custom-jinan`，ailpha 单 → `dkh-ailpha-jinan`）；不得把 custom 修复 MR 打到 ailpha 分支
+- 策略：优先自动 push + 开 MR；失败则本地 commit，平台保持 `处理中` 并注明待人工推送
 - 凭证：`GITLAB_TOKEN` 等，仅 env；无 Token 时不得报「现场验证」成功
 
 ## 3. 端到端流程
 
+总览（实现必须遵守下列子步骤的顺序与失败语义）：
+
 ```text
-人工触发「修 1 单」（可配置上限，默认 1）
-  → login
-  → 可选 GET stats（仅日志参考）
-  → GET 列表（project_id + status 白名单）→ 过滤未指派、排除大屏
-  → 本地幂等：已有进行中 ticket 则跳过
-  → GET 详情
-  → 组装上下文：id、target_menu、description、followups（时间序，最新优先）、截图清单
-  → 查菜单映射表
-       无映射 → followup 说明并跳过
-       指向 home → followup「home 不在范围」并跳过
-       custom 与 ailpha 皆有 → 选 custom
-  → POST followup：status_change=处理中（不改 assignee）
-  → 下载主单 screenshots + followups[].attachments（跳过 file_size=0）
-  → 在目标仓从 jinan 基线建 bugfix/<id>（工作区必须干净或使用独立 worktree）
-  → 启动 dsh headless：注入上下文 + 映射路径 + routes 线索
-  → Agent 改代码 → 跑配置的 lint/build
-  → 尝试 push + MR
-       成功 → followup：现场验证 + MR 链接
-       Git 失败 → 保持处理中 + 本地分支/commit + 待人工推送
-       修失败或判定偏后端 → 保持处理中 + 原因（不开假成功）
+人工触发跑批（默认最多 1 单，可配置）
+  → 3.1 会话登录（整批一次，401 再刷新）
+  → 可选 stats（仅日志）
+  → 分页拉列表 → 过滤 → 对候选单循环直到成功领满或列表耗尽：
+       3.2 幂等检查 → 跳过
+       3.3 GET 详情 → 组装文本上下文
+       3.4 映射决议（通过前不得标「处理中」）
+            失败 → 可选 followup 说明（不改状态）→ 下一单
+       3.5 标处理中（不改指派）→ 落盘 phase=claimed
+       3.6 下载截图/附件
+       3.7 准备工作区与 bugfix/<id>
+       3.8 调用 dsh agent
+       3.9 门禁（lint/build 均默认关闭；开启后 lint 仅针对变更文件）
+       3.10 Git 尝试与回写
 ```
+
+### 3.1 会话与鉴权
+
+- 跑批进程启动时 `login` **一次**，将 `token` 保存在进程内存（或短生命周期会话对象）中。
+- 同一跑批内所有 list/get/followup/download 复用该 token；**禁止**每个 HTTP 请求都 login。
+- 收到 401（或可解析的过期）：再 `login` 一次，更新内存 token，**仅重试失败的那一次请求**；连续刷新失败则中止跑批并报告。
+- 用户名密码与 token 只来自环境变量 / credentials；日志与 session 摘要中不得出现明文密钥。
+
+### 3.2 选单与幂等
+
+- `GET /api/bug-tickets`：`project_id=47`，`status=待确认,验证未通过`，按页拉取直至满足「本批已修/已尝试上限」或无更多页。
+- 客户端过滤：保留 `assignee_id == null` 且 `target_menu !== "网络安全数据大屏"`。
+- 读取本地状态文件：若该 `ticket_id` 的 `phase` 为进行中（如 `claimed` / `fixing` / `awaiting_push`）或已成功闭环且策略禁止重开，则跳过。
+- 默认每批只处理 1 单；配置 `maxTickets` 时可连续尝试多个候选，但第一期仍建议串行（并发=1）。
+
+### 3.3 详情与文本上下文
+
+- `GET /api/bug-tickets/:id`。
+- 取出并规范化：`id`、`target_menu`、`description`、`issue_type`、`importance`、`followups`。
+- `followups` 按 `created_at` 升序排列，注入时标明「以最新跟进为准」。
+- 此时只记录截图/附件的远程 `url` 列表，**先不下载**（等映射通过并领单后再下，避免无映射单浪费 IO）。
+
+### 3.4 映射决议（领单前）
+
+输入：`target_menu` + `menu-mapping.json`（§4.2）+ 强制规则。输出：`{ repo, branch, localRoot, routesFile, routeHint?, filePath? }` 或跳过原因。
+
+- 按 §4.2 无法解析为可修 custom/ailpha → 跳过；可选 `followup`：`content` 说明「无菜单映射」，`status_change` 为空（保持原状态）。
+- 映射指向 `home` → 跳过；可选 followup「home 不在自动修复范围」，不改状态。
+- 映射在 custom 与 ailpha 皆命中（或实现层检测到双仓模块）→ **强制选 custom**。
+- 通过后才进入 3.5；**禁止**先标「处理中」再发现无映射。
+
+### 3.5 领单（写处理中）
+
+- `POST .../followups`：`status_change=处理中`，`assignee_change=null`（或不传，语义为不改指派），`content` 标明自动修复开始。
+- 本地状态写入：`phase=claimed`，记录 `repo`、`branch`、时间戳。
+- 若 followup 失败：不创建分支、不调 agent；记错误并处理下一候选（或中止，可配置）。
+
+### 3.6 下载附件
+
+- 下载主单 `screenshots[]` 与各 `followups[].attachments[]`。
+- 跳过 `file_size === 0` 或下载失败的项，并在 Agent brief 中注明缺失。
+- 保存到跑批工作目录（如 `.dsh-bugfix/<ticket_id>/assets/`）；施加张数/总大小上限配置。
+- 相对路径用 `baseUrl` 拼接；请求带同一 Bearer。
+
+### 3.7 工作区与分支
+
+- 目标仅为映射得到的那一个 `localRoot`；**不得**切换到其它两个本地目录去改本单。
+- 开跑前断言：当前分支为本目录绑定的 jinan，或已是本单的 `bugfix/<ticket_id>`。若当前在其它产品 jinan（例如在 ailpha 目录上却是 `dkh-custom-jinan`）→ **中止并回写**，禁止自动 checkout「纠正」。
+- `git status` 干净；dirty 则失败并说明。
+- 仅在本目录内，从**当前绑定 jinan 的 HEAD** 创建 `bugfix/<ticket_id>`。MR 目标为**同一产品 jinan**（同一 GitLab 项目内的对应分支）。
+- 不得在本目录检出另一条产品 jinan 来改文件。
+- 状态：`phase=fixing`。
+
+### 3.8 调用 Agent
+
+- 启动 dsh headless（或等价编排）：工作目录=目标仓；注入 §4.1 brief（含本地截图路径、`routesFile`、`filePath`/`routeHint`）。
+- 约束提示：优先在映射路径与路由指向的模块内修改；像纯后端/纯数据问题则停止改代码并返回可解析的失败原因。
+- Agent 异常退出、超时、无有效 diff：进入失败回写（3.10 失败支路），不开 MR。
+
+### 3.9 门禁
+
+- **第一期默认不执行门禁**：`lint` 与全量 `build` 均 **默认关闭**；Agent 改完有 diff 即可进入 Git 尝试路径（仍要求存在变更，无 diff 则失败回写）。
+- 预留配置：`lintEnabled`（默认 `false`）、`buildEnabled`（默认 `false`）。
+- 当将来打开 `lintEnabled` 时：
+  - 命令为 `pnpm run lint`，且**只传入本单变更文件**（如 `pnpm run lint -- <files...>`），禁止无参数全仓 lint。
+  - 无变更文件则失败；lint 失败则不进入 Git 成功路径，followup 保持 `处理中` 并写明文件与摘要。
+- `buildEnabled=true` 时才跑全仓 build（成本高，第一期不启用）。
+
+### 3.10 Git 与结果回写
+
+- **尝试**：在**同一目标目录**内 commit → push `bugfix/<id>` → 向**该目录绑定的 jinan** 开 MR（同一 `bigdata-web-frontend` 项目内；custom 单目标 `dkh-custom-jinan`，不得打到 `dkh-ailpha-jinan`）。
+- **MR 成功**：followup `status_change=现场验证`，content 含 MR URL 与摘要；`phase=done`，记录 `mrUrl`。
+- **无 Token / push 或 MR 失败**：确保本地 commit 存在；followup 保持 `处理中`（或 `status_change=处理中`），写分支名、commit、待人工推送；`phase=awaiting_push`。**禁止**标「现场验证」。
+- **修失败 / 偏后端**：followup 保持 `处理中` + 原因；不开假 MR；`phase=failed`。
+- 本批若 `maxTickets>1`，回到列表循环处理下一候选；第一期默认处理完 1 单成功或 1 单失败尝试后结束亦可配置。
 
 ## 4. 上下文与映射
 
@@ -102,28 +184,22 @@ Followup 写回字段（已验证）：`content`、`attachments`、`status_chang
 - `description`（全文）
 - `followups[]`：按 `created_at` 排序；含 `content`、`status_change`、`creator_name`、`created_at`；**以最新跟进为准**
 - 本地截图路径列表
-- 映射得到的 `repo`、`branch`、`pathPrefix`（若有）
-- 明确指示：先读目标仓路由/菜单配置（如 custom 的 `src/routes.js`）
+- 映射得到的 `repo`、`branch`、`routeHint`、`filePath`（作为优先打开的页面文件）
+- 明确指示：先读映射 `filePath`，再按需读目标仓路由入口（custom：`src/routes.js`；ailpha：`src/commonRoutes.js`）
 
-### 4.2 菜单映射表（用户后续补充）
+### 4.2 菜单映射表（已落实）
 
-配置文件（YAML 或 JSON），建议字段：
-
-```yaml
-# target_menu -> 定位信息
-- target_menu: 支撑单位
-  repo: custom          # custom | ailpha（第一期不用 home）
-  branch: dkh-custom-jinan
-  pathPrefix: src/...   # 可选
-  routeHint: ...        # 可选
-```
-
-规则：
-
-- 无条目 → 跳过并回写「无菜单映射」
-- 同模块在 custom 与 ailpha 都存在 → **只改 custom**（映射应优先写 custom；实现层亦强制该优先级）
-- 指向 home → 跳过
-- 映射可先只覆盖试点菜单（5～15 个），不阻塞骨架开发
+- **权威文件**：`D:\CODE\COMPANY\dkh-bugFix-project\menu-mapping.json`（Config 键如 `mappingFile` 指向此路径；可配置覆盖）。
+- **结构**：读取 `systems.*.items[]`；不必再维护单独的简表 YAML。
+- **每项关键字段**：`target_menu`、`menu_path`、`menu_code`、`repo`、`branch`、`routeHint`、`filePath`、`file_exists`。
+- **解析规则**：
+  - 按 bug 的 `target_menu` 精确匹配 `items[].target_menu`。
+  - 可修：`repo` 为 `custom` 或 `ailpha`，且建议 `file_exists === true`；`repo == null` 或无法定位 → 视为无映射，跳过。
+  - 多条命中：优先 `custom`，再 `ailpha`；仍冲突时用 `menu_path` / `menu_code` 消歧。
+  - 指向 home 或非 custom/ailpha → 跳过。
+  - `target_menu === "网络安全数据大屏"` 仍由选单过滤排除（映射中即使存在也不领）。
+- **已验证样例**：bug `387`（`支撑单位`）→ `repo=custom`，`filePath=src/views/networkSecurityIndustry/index.vue`，本地文件存在。
+- **可选**：Config 增加 `menuAllowlist`（仅跑指定 `target_menu`）；缺省则凡可解析且可修的菜单均可尝试。
 
 ## 5. 状态机与回写
 
@@ -133,7 +209,7 @@ Followup 写回字段（已验证）：`content`、`attachments`、`status_chang
 | MR 成功 | `现场验证` | `null` | MR 链接 + 摘要 |
 | 本地已修好但 Git 失败 | `处理中`（或 `status_change` 为空且当前已是处理中） | `null` | 分支名、commit、待人工推送；禁止标现场验证 |
 | 修失败 / 像后端问题 | 保持处理中 | `null` | 失败原因；第一期不转派 |
-| 无映射 / home 范围外 | 不领单或领单前跳过；若已交互则只写说明 | — | 原因 |
+| 无映射 / home 范围外 | 不标处理中；可选 followup 且 `status_change` 为空 | — | 跳过原因；保持原状态 |
 
 第一期不自动转派后端（即使内容像数据/接口问题）。
 
@@ -152,7 +228,7 @@ Followup 写回字段（已验证）：`content`、`attachments`、`status_chang
 | Bug 平台 HTTP provider | login、list、get、followup、download、可选 stats |
 | 编排命令 / 小 runner | 选单、幂等、映射、状态机、调起 agent、Git 尝试 |
 | Git 适配 | 每仓独立；try MR → fallback 本地 |
-| 配置 | baseUrl、project_id、仓路径、分支、lint/build 命令、映射文件路径 |
+| 配置 | baseUrl、project_id、仓路径、分支、`mappingFile`（默认 `menu-mapping.json` 路径）、可选 `menuAllowlist`、`lintEnabled`/`buildEnabled`（默认 false） |
 | 组合 | example 或 profile patch；密钥走 credentials/env |
 
 原则：新行为挂扩展点与插件；不改 agent-loop；模型可见输入进 session 日志（遵循仓库「model-visible ⟺ logged」）。
@@ -161,7 +237,7 @@ Followup 写回字段（已验证）：`content`、`attachments`、`status_chang
 
 1. 手动触发后，能领到符合过滤条件的未指派单，并写 `处理中`。
 2. 无映射的单被跳过且有跟进说明。
-3. 有映射的试点单：能在正确仓（优先 custom）产生 `bugfix/<id>` 与本地 commit。
+3. 有映射的试点单：只在正确本地目录（优先 custom）产生 `bugfix/<id>` 与本地 commit；不出现在错误目录切换产品 jinan 改代码。
 4. GitLab 可用时开出 MR 并回写 `现场验证`；不可用时保持 `处理中` 且说明待推送。
 5. 凭证仅来自环境变量；仓库中无密钥。
 
@@ -176,7 +252,7 @@ Followup 写回字段（已验证）：`content`、`attachments`、`status_chang
 
 ## 10. 待用户补充（不阻塞骨架）
 
-- [ ] 试点 `target_menu` 映射表
-- [ ] 各仓 `package.json` 中的 lint/build 命令（实现时读取并做成配置）
-- [ ] 各仓 GitLab 项目 path 与 Token 权限验证
-- [ ] 确认 custom 分支正式名为 `dkh-custom-jinan`（若与口头 `dkh-customn` 不同以仓库为准）
+- [x] 菜单映射：已采用 `D:\CODE\COMPANY\dkh-bugFix-project\menu-mapping.json`（见 §4.2）
+- [x] GitLab Token / 项目 / 分支：已验证可用（user=`zijie.xiang`，项目 `jgts/bigdata-web-frontend` id=8325；`dkh-custom-jinan` / `dkh-ailpha-jinan` / `dkh-home-jinan` 均可读）
+- [x] 三仓本地 `HEAD`：已确认分别在 `dkh-custom-jinan` / `dkh-ailpha-jinan` / `dkh-home-jinan`（工作区 clean）
+- [ ] 抽查各仓 `pnpm run lint -- <file>` 是否接受路径参数（**启用 lint 前**再做；第一期默认关闭）
