@@ -2,7 +2,7 @@
 
 English | [中文](README.zh.md)
 
-HTTP client library (and optional Cordis plugin entry) for the internal bug-platform API used by autofix orchestration. Phase 1 is **library-first**: callers construct the client from Config/env; `apply` only validates Config and does not invent a `ctx.bugPlatform` seam.
+HTTP client library (and optional Cordis plugin entry) for the internal bug-platform API used by autofix orchestration. Phase 1 is **library-first**: callers construct `BugPlatformClient` from resolved username/password/`baseUrl` (and optional `fetchImpl`); `apply` only validates Config and does not invent a `ctx.bugPlatform` seam.
 
 ## Config
 
@@ -12,7 +12,11 @@ HTTP client library (and optional Cordis plugin entry) for the internal bug-plat
 | `usernameEnv` | `BUG_PLATFORM_USERNAME` | Credential-ref env name for the login username. |
 | `passwordEnv` | `BUG_PLATFORM_PASSWORD` | Credential-ref env name for the login password. |
 
-Empty strings after defaulting throw at plugin `apply` time.
+Empty strings after defaulting throw at plugin `apply` time. The Cordis plugin inject list is empty; resolve credentials outside the plugin and pass them into `BugPlatformClient`.
+
+## Client
+
+`BugPlatformClient` supports `ensureToken` (login + cache), `listTickets`, and `getTicket`. Authenticated calls send `Authorization: Bearer <token>`. On HTTP 401 the client re-logins once and retries the failed request once. Tokens and passwords are never logged. Follow-up write and attachment download land in a later change.
 
 ## Model Experience
 
@@ -24,4 +28,5 @@ No effect; the package does not touch model request assembly.
 
 ## Known Limitations and Deferred Work
 
-- **HTTP client not implemented yet** — login, list/get tickets, follow-up, attachment download, and 401 re-login retry land in follow-up tasks; this package currently exports Config validation and the Cordis plugin stub only.
+- **Follow-up and download** — `createFollowup` / `downloadToFile` are not exported yet.
+- Cordis `apply` validates Config only; it does not construct or register the client on `ctx`.
