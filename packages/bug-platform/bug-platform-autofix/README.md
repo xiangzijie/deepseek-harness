@@ -44,4 +44,7 @@ No effect; the package does not touch model request assembly.
 
 - Cordis `apply` validates Config only; it does not register orchestration on `ctx`.
 - Default agent runner is a thin `pnpm dsh` spawn; production runners should inject timeouts and richer exit parsing.
-- Home worktree roots are typed on `WorkspaceRoots` but phase-1 edits must not target home.
+- Home worktree roots are typed on `WorkspaceRoots` but phase-1 edits must not target home; mapped `home` skips before claim.
+- No scheduled polling and no multi-ticket concurrency; `runBatch` is serial and manually triggered.
+- Automatic reassignment to backend handlers is deferred; failure followups stay `处理中` with assignee unchanged.
+- Phase-1 `run-once` keeps the agent brief outside the session log; session integration must make that model-visible brief reconstructable from session events.

@@ -29,3 +29,6 @@ No effect; the package does not touch model request assembly.
 ## Known Limitations and Deferred Work
 
 - Cordis `apply` validates Config only; it does not construct or register the client on `ctx`.
+- No scheduled list polling; each run is caller-driven.
+- No client-side concurrency or cross-process claim lock; overlapping callers can race the same ticket.
+- Home-menu tickets and automatic backend reassignment are out of scope here; orchestration consumers own those policies (phase 1 skips home and does not auto-reassign).

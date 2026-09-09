@@ -44,4 +44,7 @@
 
 - Cordis `apply` 仅校验 Config；不在 `ctx` 上注册编排。
 - 默认 agent runner 是薄封装的 `pnpm dsh` spawn；生产应注入超时与更完整的退出解析。
-- `WorkspaceRoots` 含 home 路径类型，但第一期不得改 home。
+- `WorkspaceRoots` 含 home 路径类型，但第一期不得改 home；映射到 `home` 时在领单前跳过。
+- 无定时轮询，亦无多单并发；`runBatch` 串行且由人工触发。
+- 自动转派后端处理人暂缓；失败 followup 保持 `处理中` 且不改指派。
+- 第一期 `run-once` 的 agent brief 不在 session 日志内；接入 session 后须使该模型可见 brief 可从 session 事件重建。
