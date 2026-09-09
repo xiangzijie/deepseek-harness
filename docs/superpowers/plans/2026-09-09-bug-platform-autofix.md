@@ -397,7 +397,7 @@ Required env:
 
 Config paths default to the three local roots + `menu-mapping.json`.
 
-CLI flag: `--ticket 387` to force one id (bypass list) for pilot.
+CLI flag: `--ticket 428` to force one id (bypass list status whitelist) for pilot.
 
 - [ ] **Step 2: README 鈥?涓枃鎿嶄綔璇存槑**锛堝嚟璇佸嬁鍏ュ簱锛?
 - [ ] **Step 3: Commit**
@@ -425,7 +425,7 @@ git commit -m "docs: bug 骞冲彴鑷姩淇 Agent Note 涓?README"
 
 ---
 
-### Task 11: Manual smoke (pilot ticket 387)
+### Task 11: Manual smoke (pilot ticket 428)
 
 **Not automated CI.** Operator machine only.
 
@@ -439,17 +439,20 @@ $env:GITLAB_TOKEN = [System.Environment]::GetEnvironmentVariable('GITLAB_TOKEN',
 - [ ] **Step 2: Run**
 
 ```sh
-pnpm exec tsx examples/bug-platform-autofix/run-once.ts --ticket 387
+pnpm exec tsx examples/bug-platform-autofix/run-once.ts --ticket 428
 ```
 
 Expected:
 
-- followup 鈫?`澶勭悊涓璥
-- branch `bugfix/387` under `dkh-custom`
-- agent edits near `src/views/networkSecurityIndustry/`
+- `--ticket` bypasses status whitelist (`428` is 转派, not in 待确认/验证未通过)
+- mapping resolves to custom `src/views/assetVerification/index.vue`
+- followup to 处理中 (assignee unchanged)
+- branch `bugfix/428` under `dkh-custom`
+- agent uses latest followup: `/api/company/listPageV2` needs `application/json`
 - MR or `awaiting_push` followup
 
 - [ ] **Step 3: Record outcome in Agent Note or example README troubleshooting**
+
 
 ---
 

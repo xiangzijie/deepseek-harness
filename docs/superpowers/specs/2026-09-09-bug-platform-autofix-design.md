@@ -198,7 +198,9 @@ Followup 写回字段（已验证）：`content`、`attachments`、`status_chang
   - 多条命中：优先 `custom`，再 `ailpha`；仍冲突时用 `menu_path` / `menu_code` 消歧。
   - 指向 home 或非 custom/ailpha → 跳过。
   - `target_menu === "网络安全数据大屏"` 仍由选单过滤排除（映射中即使存在也不领）。
-- **已验证样例**：bug `387`（`支撑单位`）→ `repo=custom`，`filePath=src/views/networkSecurityIndustry/index.vue`，本地文件存在。
+- **已验证样例**：
+  - bug `387`（`支撑单位`）→ `repo=custom`，`filePath=src/views/networkSecurityIndustry/index.vue`
+  - **试点单** bug `428`（`资产核查`）→ `repo=custom`，`routeHint=/assets/assetVerification`，`filePath=src/views/assetVerification/index.vue`；最新跟进：`/api/company/listPageV2` 需 `application/json`。注意：状态为 `转派`，不在默认选单白名单，跑批须 `--ticket 428` 强制领单。
 - **可选**：Config 增加 `menuAllowlist`（仅跑指定 `target_menu`）；缺省则凡可解析且可修的菜单均可尝试。
 
 ## 5. 状态机与回写
