@@ -455,6 +455,12 @@ importers:
       '@deepseek-ai/dsh-bash-sandbox':
         specifier: workspace:*
         version: link:../packages/shell/bash-sandbox
+      '@deepseek-ai/dsh-bug-platform-autofix':
+        specifier: workspace:*
+        version: link:../packages/bug-platform/bug-platform-autofix
+      '@deepseek-ai/dsh-bug-platform-http':
+        specifier: workspace:*
+        version: link:../packages/bug-platform/bug-platform-http
       '@deepseek-ai/dsh-code-runtime-worker-thread':
         specifier: workspace:*
         version: link:../packages/code-runtime/code-runtime-worker-thread

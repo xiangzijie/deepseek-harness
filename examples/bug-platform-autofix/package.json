@@ -1,0 +1,7 @@
+{
+  "name": "bug-platform-autofix-example",
+  "private": true,
+  "version": "0.0.1",
+  "type": "module",
+  "description": "Manual one-shot runner for internal bug-platform autofix (library entry, no cordis.yml)"
+}
