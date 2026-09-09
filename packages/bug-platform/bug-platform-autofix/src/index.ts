@@ -1,8 +1,7 @@
 /**
- * `@deepseek-ai/dsh-bug-platform-autofix`: library-first menu mapping and
- * (later) ticket orchestration for internal bug-platform autofix. Cordis
- * `apply` validates Config only; callers import {@link loadMenuMapping} /
- * {@link resolveMenu} directly.
+ * `@deepseek-ai/dsh-bug-platform-autofix`: library-first menu mapping, ticket
+ * selection, and local idempotency for internal bug-platform autofix. Cordis
+ * `apply` validates Config only; callers import helpers directly.
  *
  * @module @deepseek-ai/dsh-bug-platform-autofix
  */
@@ -12,6 +11,21 @@ import z from '@deepseek-ai/schemastery'
 
 export type { MenuMappingIndex, MenuMappingItem, ResolvedMenu } from './menu-mapping.ts'
 export { loadMenuMapping, resolveMenu } from './menu-mapping.ts'
+
+export type { SelectableTicket, SelectTicketsOptions } from './select.ts'
+export {
+  DEFAULT_ELIGIBLE_STATUSES,
+  EXCLUDED_TARGET_MENU,
+  selectTickets,
+} from './select.ts'
+
+export type { TicketPhase, TicketRecord } from './ticket-state.ts'
+export {
+  isActive,
+  loadState,
+  saveState,
+  TicketStateStore,
+} from './ticket-state.ts'
 
 /** Cordis plugin name used by loader diagnostics. */
 export const name = 'bug-platform-autofix'
