@@ -1,0 +1,92 @@
+{
+  "meta": {
+    "purpose": "minimal unit-test fixture for menu mapping resolution"
+  },
+  "systems": {
+    "NetworkSecurityDataSystem": {
+      "system_name": "网络安全数据系统",
+      "items": [
+        {
+          "target_menu": "支撑单位",
+          "menu_code": "TechnicalUnitJinan",
+          "menu_path": "产业数据/支撑单位",
+          "repo": "custom",
+          "branch": "dkh-custom-jinan",
+          "routeHint": "/networkSecurity/technicalUnitJinan",
+          "filePath": "src/views/networkSecurityIndustry/index.vue",
+          "file_exists": true
+        },
+        {
+          "target_menu": "流量监测",
+          "menu_code": "FlowMonitoring",
+          "menu_path": "研判分析/流量监测",
+          "repo": "ailpha",
+          "branch": "dkh-ailpha-jinan",
+          "routeHint": "/analysis/threat",
+          "filePath": "src/views/analysis/threat/index.vue",
+          "file_exists": true
+        },
+        {
+          "target_menu": "研判分析",
+          "menu_code": "AnalysisAndJudgment",
+          "menu_path": "研判分析",
+          "repo": null,
+          "branch": null,
+          "routeHint": null,
+          "filePath": null,
+          "file_exists": null
+        },
+        {
+          "target_menu": "双仓菜单",
+          "menu_code": "DualCustom",
+          "menu_path": "custom/双仓菜单",
+          "repo": "custom",
+          "branch": "dkh-custom-jinan",
+          "routeHint": "/dual/custom",
+          "filePath": "src/views/dual/custom.vue",
+          "file_exists": true
+        },
+        {
+          "target_menu": "双仓菜单",
+          "menu_code": "DualAilpha",
+          "menu_path": "ailpha/双仓菜单",
+          "repo": "ailpha",
+          "branch": "dkh-ailpha-jinan",
+          "routeHint": "/dual/ailpha",
+          "filePath": "src/views/dual/ailpha.vue",
+          "file_exists": true
+        },
+        {
+          "target_menu": "首页概览",
+          "menu_code": "HomeOverview",
+          "menu_path": "首页/首页概览",
+          "repo": "home",
+          "branch": "dkh-home-jinan",
+          "routeHint": "/home/overview",
+          "filePath": "src/views/home/overview.vue",
+          "file_exists": true
+        },
+        {
+          "target_menu": "仅无文件标记",
+          "menu_code": "MissingFileCustom",
+          "menu_path": "产业数据/仅无文件标记",
+          "repo": "custom",
+          "branch": "dkh-custom-jinan",
+          "routeHint": "/missing",
+          "filePath": "src/views/missing/index.vue",
+          "file_exists": false
+        },
+        {
+          "target_menu": "仅无文件标记",
+          "menu_code": "ExistingFileAilpha",
+          "menu_path": "研判分析/仅无文件标记",
+          "repo": "ailpha",
+          "branch": "dkh-ailpha-jinan",
+          "routeHint": "/missing-ailpha",
+          "filePath": "src/views/missing/ailpha.vue",
+          "file_exists": true
+        }
+      ]
+    }
+  }
+}

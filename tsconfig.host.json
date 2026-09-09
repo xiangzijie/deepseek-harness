@@ -232,6 +232,7 @@
     { "path": "./packages/web/web-fetch-http" },
     { "path": "./packages/web/tool-web" },
     { "path": "./packages/bug-platform/bug-platform-http" },
+    { "path": "./packages/bug-platform/bug-platform-autofix" },
     { "path": "./packages/spill/spill" },
     { "path": "./packages/spill/spill-local" },
     { "path": "./packages/spill/spill-policy" },

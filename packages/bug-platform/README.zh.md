@@ -7,3 +7,4 @@
 | 包 | 职责 | ctx key |
 |---|---|---|
 | [`bug-platform-http/`](bug-platform-http/README.md) | bug 平台 HTTP 客户端库与可选的 Cordis Config 插件 | 可选插件 `bug-platform-http`（第一阶段不拥有 ctx 键） |
+| [`bug-platform-autofix/`](bug-platform-autofix/README.md) | 菜单映射与（后续）自动修复编排库 | 可选插件 `bug-platform-autofix`（第一阶段不拥有 ctx 键） |

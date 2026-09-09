@@ -7,3 +7,4 @@ HTTP access to the internal bug-platform API plus orchestration that selects tic
 | Package | Role | ctx key |
 |---|---|---|
 | [`bug-platform-http/`](bug-platform-http/README.md) | Bug-platform HTTP client library and optional Cordis Config plugin | optional plugin `bug-platform-http` (no owned ctx key in phase 1) |
+| [`bug-platform-autofix/`](bug-platform-autofix/README.md) | Menu mapping and (later) autofix orchestration library | optional plugin `bug-platform-autofix` (no owned ctx key in phase 1) |

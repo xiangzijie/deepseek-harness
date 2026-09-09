@@ -981,6 +981,19 @@ importers:
         specifier: ^15.0.0
         version: 15.0.0
 
+  packages/bug-platform/bug-platform-autofix:
+    dependencies:
+      '@deepseek-ai/schemastery':
+        specifier: link:../../../vendor/schemastery
+        version: link:../../../vendor/schemastery
+    devDependencies:
+      '@deepseek-ai/cordis':
+        specifier: workspace:^
+        version: link:../../../vendor/cordis
+      '@deepseek-ai/dsh-invariants':
+        specifier: workspace:^
+        version: link:../../runtime-diagnostics/invariants
+
   packages/bug-platform/bug-platform-http:
     dependencies:
       '@deepseek-ai/schemastery':
