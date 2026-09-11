@@ -25,7 +25,7 @@ import { parseRunOnceArgs } from './cli-args.ts'
 import { runPollLoop } from './poll-loop.ts'
 
 /** deepseek-harness worktree root (parent of `examples/`). */
-const HARNESS_ROOT = fileURLToPath(new URL('../..', import.meta.url))
+const HARNESS_ROOT = fileURLToPath(new URL('../../..', import.meta.url))
 
 /**
  * headless typert-loader loads package `exports["./typert"]` → `lib/typert.host.js`.
