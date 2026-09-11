@@ -1,6 +1,7 @@
 /**
  * End-to-end orchestrator for one ticket / one batch (design §3).
- * Mapping is resolved before any `处理中` claim; home/unmapped never claim.
+ * Mapping is resolved before any `处理中` claim; home / unmapped /
+ * {@link EXCLUDED_TARGET_MENU} never claim.
  *
  * @module @deepseek-ai/dsh-bug-platform-autofix/orchestrator
  */
@@ -24,9 +25,12 @@ import {
   type WorkspaceRoots,
 } from './git-workspace.ts'
 import {
-  createMergeRequest,
+  addMergeRequestNote,
+  ensureMergeRequest,
   GitlabTokenMissingError,
+  type AddMergeRequestNoteOptions,
   type CreateMergeRequestOptions,
+  type EnsuredMergeRequest,
 } from './gitlab-mr.ts'
 import {
   resolveMenu,
@@ -34,7 +38,7 @@ import {
   type ResolvedMenu,
 } from './menu-mapping.ts'
 import type { AgentRunner } from './run-agent.ts'
-import { selectTickets } from './select.ts'
+import { EXCLUDED_TARGET_MENU, selectTickets } from './select.ts'
 import type { TicketPhase, TicketStateStore } from './ticket-state.ts'
 
 /** Fixed product jinan branch names for the three worktrees. */
@@ -79,7 +83,13 @@ export interface OrchestratorConfig {
   buildEnabled?: boolean
   agentRunner: AgentRunner
   runGit?: RunGit
-  createMr?: (opts: CreateMergeRequestOptions) => Promise<{ webUrl: string }>
+  /**
+   * Create or reuse an MR for `bugfix/<id>`. Defaults to {@link ensureMergeRequest}.
+   * Prefer this over a bare create so a second autofix pass does not fail on 409.
+   */
+  ensureMr?: (opts: CreateMergeRequestOptions) => Promise<EnsuredMergeRequest>
+  /** Post an MR discussion note; defaults to {@link addMergeRequestNote}. */
+  addMrNote?: (opts: AddMergeRequestNoteOptions) => Promise<void>
   /** Invoked only when `lintEnabled` is true. */
   lintRunner?: LintRunner
   /** When true (default), write an optional skip followup for unmapped/home. */
@@ -124,6 +134,18 @@ export async function runOneTicket(
       : ticketIdOrDetail
 
   const targetMenu = detail.target_menu
+  if (targetMenu === EXCLUDED_TARGET_MENU) {
+    const reason = `排除菜单：${EXCLUDED_TARGET_MENU}，保持原状态`
+    if (config.writeSkipFollowup !== false) {
+      await config.client.createFollowup(detail.id, {
+        content: reason,
+        status_change: null,
+        assignee_change: null,
+      })
+    }
+    return { kind: 'skipped', reason }
+  }
+
   const resolved =
     targetMenu === null ? null : resolveMenu(config.menuIndex, targetMenu)
 
@@ -143,9 +165,15 @@ export async function runOneTicket(
   const expectedJinan = config.productBranches[resolved.repo]
   const branchName = `bugfix/${detail.id}`
   const routesFile = resolved.repo === 'custom' ? 'src/routes.js' : 'src/commonRoutes.js'
+  const prior = config.stateStore.get(detail.id)
+  const isReprocess =
+    prior !== undefined &&
+    (prior.phase === 'done' || prior.phase === 'awaiting_push' || prior.phase === 'failed')
 
   await config.client.createFollowup(detail.id, {
-    content: '自动修复开始：已领单，状态改为处理中（不改指派）',
+    content: isReprocess
+      ? '自动修复重新处理开始：再次改为处理中（不改指派）'
+      : '自动修复开始：已领单，状态改为处理中（不改指派）',
     status_change: '处理中',
     assignee_change: null,
   })
@@ -161,7 +189,7 @@ export async function runOneTicket(
   try {
     await assertProductBranch(localRoot, expectedJinan, config.runGit)
     await assertClean(localRoot, config.runGit)
-    await createBugfixBranch(localRoot, detail.id, config.runGit)
+    await createBugfixBranch(localRoot, detail.id, expectedJinan, config.runGit)
   } catch (error) {
     const reason = errorMessage(error)
     return failClaimed(config, detail.id, resolved, branchName, reason)
@@ -231,8 +259,8 @@ export async function runOneTicket(
 
   try {
     await pushBranch(localRoot, branchName, config.runGit)
-    const createMr = config.createMr ?? createMergeRequest
-    const { webUrl } = await createMr({
+    const ensureMr = config.ensureMr ?? ensureMergeRequest
+    const mr = await ensureMr({
       host: config.gitlab.host,
       projectId: config.gitlab.projectId,
       token: config.gitlab.token,
@@ -242,8 +270,24 @@ export async function runOneTicket(
       description: `${agentResult.summary}\n\ncommit: ${commitSha}`,
     })
 
+    const noteBody =
+      `自动修复提交\ncommit: ${commitSha}\n${agentResult.summary}`
+    const addMrNote = config.addMrNote ?? addMergeRequestNote
+    await addMrNote({
+      host: config.gitlab.host,
+      projectId: config.gitlab.projectId,
+      token: config.gitlab.token,
+      mergeRequestIid: mr.iid,
+      body: noteBody,
+    })
+
+    const followupPrefix =
+      isReprocess || !mr.created
+        ? '自动修复重新处理完成，请现场验证。'
+        : '自动修复完成，请现场验证。'
     await config.client.createFollowup(detail.id, {
-      content: `自动修复完成，请现场验证。\nMR: ${webUrl}\n${agentResult.summary}`,
+      content:
+        `${followupPrefix}\nMR: ${mr.webUrl}\ncommit: ${commitSha}\n${agentResult.summary}`,
       status_change: '现场验证',
       assignee_change: null,
     })
@@ -252,9 +296,9 @@ export async function runOneTicket(
       phase: 'done',
       repo: resolved.repo,
       branch: branchName,
-      mrUrl: webUrl,
+      mrUrl: mr.webUrl,
     })
-    return { kind: 'done', mrUrl: webUrl }
+    return { kind: 'done', mrUrl: mr.webUrl }
   } catch (error) {
     // Local commit exists: keep 处理中 / awaiting_push for any push or MR failure
     // (including GitlabTokenMissingError). Never claim 现场验证.
@@ -324,6 +368,9 @@ export async function runBatch(
 function skipReason(index: MenuMappingIndex, targetMenu: string | null): string {
   if (targetMenu === null || targetMenu.length === 0) {
     return '无菜单映射：target_menu 为空，保持原状态'
+  }
+  if (targetMenu === EXCLUDED_TARGET_MENU) {
+    return `排除菜单：${EXCLUDED_TARGET_MENU}，保持原状态`
   }
   const hits = index.items.filter(item => item.targetMenu === targetMenu)
   if (hits.some(item => item.repo === 'home')) {
@@ -425,14 +472,24 @@ function upsertPhase(
     mrUrl?: string
   },
 ): void {
-  config.stateStore.upsert({
+  const record: {
+    ticketId: number
+    phase: TicketPhase
+    repo: 'custom' | 'ailpha'
+    branch: string
+    mrUrl?: string
+    updatedAt: string
+  } = {
     ticketId: partial.ticketId,
     phase: partial.phase,
     repo: partial.repo,
     branch: partial.branch,
-    mrUrl: partial.mrUrl,
     updatedAt: new Date().toISOString(),
-  })
+  }
+  if (partial.mrUrl !== undefined) {
+    record.mrUrl = partial.mrUrl
+  }
+  config.stateStore.upsert(record)
 }
 
 /**

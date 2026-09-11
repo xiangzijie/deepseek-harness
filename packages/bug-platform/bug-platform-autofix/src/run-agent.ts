@@ -4,6 +4,9 @@
  */
 
 import { spawn } from 'node:child_process'
+import { createRequire } from 'node:module'
+import { join } from 'node:path'
+import { pathToFileURL } from 'node:url'
 
 /** Options passed to an {@link AgentRunner}. */
 export interface AgentRunnerOptions {
@@ -32,29 +35,68 @@ export type AgentRunner = (opts: AgentRunnerOptions) => Promise<AgentRunnerResul
 
 /** Options for {@link createDefaultAgentRunner}. */
 export interface DefaultAgentRunnerOptions {
+  /**
+   * Absolute path to the deepseek-harness repo root (the worktree that defines
+   * `pnpm dsh` / `apps/cli/src/bin.ts`). Required: the agent must not look up
+   * `dsh` inside the product worktree.
+   */
+  harnessRoot: string
   /** Wall-clock timeout in milliseconds; defaults to 30 minutes. */
   timeoutMs?: number
 }
 
 /**
- * Spawn `pnpm dsh --profile headless <brief>` in the product worktree.
- * Phase-1 default; tests inject a fake {@link AgentRunner} instead.
- * @param options - optional timeout.
+ * Resolve `tsx/esm` from the harness root as a `file:` URL.
+ * Node resolves bare `--import tsx/esm` against process cwd; when the agent
+ * runs with product-worktree cwd that lookup fails, so callers must pass this
+ * absolute specifier instead.
+ * @param harnessRoot - absolute deepseek-harness repo root.
+ * @returns `file:` URL to the harness-installed `tsx/esm` entry.
+ */
+export function resolveHarnessTsxImport(harnessRoot: string): string {
+  const requireFromHarness = createRequire(join(harnessRoot, 'package.json'))
+  return pathToFileURL(requireFromHarness.resolve('tsx/esm')).href
+}
+
+/**
+ * Absolute path to the harness root `tsconfig.json` used for source-plane
+ * `paths` resolution while the agent process cwd is the product worktree.
+ * @param harnessRoot - absolute deepseek-harness repo root.
+ * @returns absolute tsconfig path for `TSX_TSCONFIG_PATH`.
+ */
+export function resolveHarnessTsxTsconfig(harnessRoot: string): string {
+  return join(harnessRoot, 'tsconfig.json')
+}
+
+/**
+ * Spawn harness `dsh --profile headless <brief>` with `cwd` set to the product
+ * worktree so FS tools edit the mapped repo. Uses `node --import <absolute
+ * tsx> apps/cli/src/bin.ts` under {@link DefaultAgentRunnerOptions.harnessRoot}
+ * and sets `TSX_TSCONFIG_PATH` to the harness `tsconfig.json` so workspace
+ * packages resolve to `src/` even when cwd is not the harness root.
+ * @param options - harness root and optional timeout.
  * @returns an {@link AgentRunner}.
  */
 export function createDefaultAgentRunner(
-  options: DefaultAgentRunnerOptions = {},
+  options: DefaultAgentRunnerOptions,
 ): AgentRunner {
   const timeoutMs = options.timeoutMs ?? 30 * 60 * 1000
+  const binEntry = join(options.harnessRoot, 'apps/cli/src/bin.ts')
+  const tsxImport = resolveHarnessTsxImport(options.harnessRoot)
+  const tsxTsconfig = resolveHarnessTsxTsconfig(options.harnessRoot)
   return opts =>
     new Promise<AgentRunnerResult>((resolve) => {
       const child = spawn(
-        'pnpm',
-        ['dsh', '--profile', 'headless', opts.brief],
+        process.execPath,
+        ['--import', tsxImport, binEntry, '--profile', 'headless', opts.brief],
         {
           cwd: opts.cwd,
-          env: { ...process.env },
-          shell: true,
+          env: {
+            ...process.env,
+            TSX_TSCONFIG_PATH: tsxTsconfig,
+          },
+          // Keep pipes reliable on Windows; do not shell-wrap.
+          shell: false,
           stdio: ['ignore', 'pipe', 'pipe'],
           signal: opts.signal,
         },
@@ -80,7 +122,8 @@ export function createDefaultAgentRunner(
 
       child.on('close', (code) => {
         clearTimeout(timer)
-        const tail = (stdout || stderr).trim().slice(-2000)
+        const combined = `${stdout}${stderr}`.trim()
+        const tail = combined.slice(-2000)
         if (code === 0) {
           resolve({ ok: true, summary: tail || 'agent exited 0' })
           return

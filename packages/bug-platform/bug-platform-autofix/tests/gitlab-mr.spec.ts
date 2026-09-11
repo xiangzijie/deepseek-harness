@@ -1,6 +1,8 @@
 import { describe, expect, it, vi } from 'vitest'
 import {
+  addMergeRequestNote,
   createMergeRequest,
+  ensureMergeRequest,
   GitlabTokenMissingError,
 } from '../src/gitlab-mr.ts'
 
@@ -113,5 +115,104 @@ describe('createMergeRequest', () => {
         fetchImpl,
       }),
     ).rejects.toThrow(/403|merge_request|GitLab/i)
+  })
+})
+
+describe('ensureMergeRequest', () => {
+  it('returns created MR on first POST success', async () => {
+    const fetchImpl = vi.fn(async () =>
+      new Response(
+        JSON.stringify({
+          iid: 8,
+          web_url: `${HOST}/jgts/bigdata-web-frontend/-/merge_requests/8`,
+        }),
+        { status: 201, headers: { 'content-type': 'application/json' } },
+      ),
+    )
+
+    await expect(
+      ensureMergeRequest({
+        host: HOST,
+        projectId: PROJECT_ID,
+        token: 'glpat-test',
+        sourceBranch: 'bugfix/325',
+        targetBranch: 'dkh-custom-jinan',
+        title: 'fix #325',
+        description: 'first',
+        fetchImpl,
+      }),
+    ).resolves.toEqual({
+      webUrl: `${HOST}/jgts/bigdata-web-frontend/-/merge_requests/8`,
+      iid: 8,
+      created: true,
+    })
+    expect(fetchImpl).toHaveBeenCalledTimes(1)
+  })
+
+  it('on conflict looks up existing MR by source_branch instead of failing', async () => {
+    const fetchImpl = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input)
+      if (init?.method === 'POST') {
+        return new Response(JSON.stringify({ message: ['Already exists'] }), { status: 409 })
+      }
+      expect(url).toContain(`projects/${PROJECT_ID}/merge_requests`)
+      expect(url).toContain('source_branch=bugfix%2F325')
+      return new Response(
+        JSON.stringify([
+          {
+            iid: 8,
+            web_url: `${HOST}/jgts/bigdata-web-frontend/-/merge_requests/8`,
+            source_branch: 'bugfix/325',
+          },
+        ]),
+        { status: 200, headers: { 'content-type': 'application/json' } },
+      )
+    })
+
+    await expect(
+      ensureMergeRequest({
+        host: HOST,
+        projectId: PROJECT_ID,
+        token: 'glpat-test',
+        sourceBranch: 'bugfix/325',
+        targetBranch: 'dkh-custom-jinan',
+        title: 'fix #325',
+        description: 'second',
+        fetchImpl,
+      }),
+    ).resolves.toEqual({
+      webUrl: `${HOST}/jgts/bigdata-web-frontend/-/merge_requests/8`,
+      iid: 8,
+      created: false,
+    })
+    expect(fetchImpl).toHaveBeenCalledTimes(2)
+  })
+})
+
+describe('addMergeRequestNote', () => {
+  it('POSTs a note on the merge request iid', async () => {
+    const fetchImpl = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      expect(String(input)).toBe(
+        `${HOST}/api/v4/projects/${PROJECT_ID}/merge_requests/8/notes`,
+      )
+      expect(init?.method).toBe('POST')
+      expect(JSON.parse(String(init?.body))).toEqual({ body: 'commit: abc\nround 2' })
+      return new Response(JSON.stringify({ id: 1 }), {
+        status: 201,
+        headers: { 'content-type': 'application/json' },
+      })
+    })
+
+    await expect(
+      addMergeRequestNote({
+        host: HOST,
+        projectId: PROJECT_ID,
+        token: 'glpat-test',
+        mergeRequestIid: 8,
+        body: 'commit: abc\nround 2',
+        fetchImpl,
+      }),
+    ).resolves.toBeUndefined()
+    expect(fetchImpl).toHaveBeenCalledTimes(1)
   })
 })

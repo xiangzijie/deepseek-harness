@@ -93,17 +93,20 @@ export async function assertClean(localRoot: string, runGit?: RunGit): Promise<v
 }
 
 /**
- * Ensure `bugfix/<ticketId>` exists and is checked out. Reuses HEAD when
- * already on that branch; checks out an existing branch; otherwise creates it
- * from the current HEAD (`checkout -b`).
+ * Ensure `bugfix/<ticketId>` exists and is checked out.
+ * Reuses HEAD when already on that branch; checks out an existing branch;
+ * otherwise checks out {@link expectedJinan} first, then `checkout -b` so the
+ * new branch never stacks on a previous `bugfix/*` tip.
  * @param localRoot - absolute path of the product worktree.
  * @param ticketId - platform ticket id.
+ * @param expectedJinan - bound product jinan for this worktree (create base).
  * @param runGit - optional injectable git runner.
  * @returns the branch name `bugfix/<ticketId>`.
  */
 export async function createBugfixBranch(
   localRoot: string,
   ticketId: number,
+  expectedJinan: string,
   runGit?: RunGit,
 ): Promise<string> {
   const git = resolveRunGit(runGit)
@@ -114,9 +117,13 @@ export async function createBugfixBranch(
   const listed = (await git(localRoot, ['branch', '--list', branch])).trim()
   if (listed !== '') {
     await git(localRoot, ['checkout', branch])
-  } else {
-    await git(localRoot, ['checkout', '-b', branch])
+    return branch
   }
+
+  if (head !== expectedJinan) {
+    await git(localRoot, ['checkout', expectedJinan])
+  }
+  await git(localRoot, ['checkout', '-b', branch])
   return branch
 }
 

@@ -10,6 +10,7 @@ import {
 } from '../src/git-workspace.ts'
 
 const ROOT = 'D:/fake/dkh-ailpha'
+const JINAN = 'dkh-ailpha-jinan'
 
 function fakeRunGit(handlers: Record<string, string | (() => string)>): RunGit {
   return async (_cwd, args) => {
@@ -81,35 +82,66 @@ describe('createBugfixBranch', () => {
     const runGit = fakeRunGit({
       'rev-parse --abbrev-ref HEAD': 'bugfix/428\n',
     })
-    await expect(createBugfixBranch(ROOT, 428, runGit)).resolves.toBe('bugfix/428')
+    await expect(createBugfixBranch(ROOT, 428, JINAN, runGit)).resolves.toBe('bugfix/428')
   })
 
-  it('creates bugfix/<id> from the current HEAD when absent', async () => {
+  it('checks out expected jinan before creating a new bugfix branch', async () => {
+    const calls: string[][] = []
+    let head = 'bugfix/411'
+    const runGit: RunGit = async (_cwd, args) => {
+      calls.push([...args])
+      const key = args.join(' ')
+      if (key === 'rev-parse --abbrev-ref HEAD') return `${head}\n`
+      if (key === 'branch --list bugfix/428') return ''
+      if (key === `checkout ${JINAN}`) {
+        head = JINAN
+        return ''
+      }
+      if (key === 'checkout -b bugfix/428') {
+        head = 'bugfix/428'
+        return ''
+      }
+      throw new Error(`unexpected git args: ${key}`)
+    }
+    await expect(createBugfixBranch(ROOT, 428, JINAN, runGit)).resolves.toBe('bugfix/428')
+    const checkoutJinan = calls.findIndex(
+      c => c[0] === 'checkout' && c[1] === JINAN && c.length === 2,
+    )
+    const createBranch = calls.findIndex(
+      c => c[0] === 'checkout' && c[1] === '-b' && c[2] === 'bugfix/428',
+    )
+    expect(checkoutJinan).toBeGreaterThanOrEqual(0)
+    expect(createBranch).toBeGreaterThan(checkoutJinan)
+  })
+
+  it('creates bugfix/<id> from jinan even when already on that jinan', async () => {
     const calls: string[][] = []
     const runGit: RunGit = async (_cwd, args) => {
-      calls.push(args)
+      calls.push([...args])
       const key = args.join(' ')
-      if (key === 'rev-parse --abbrev-ref HEAD') return 'dkh-ailpha-jinan\n'
+      if (key === 'rev-parse --abbrev-ref HEAD') return `${JINAN}\n`
       if (key === 'branch --list bugfix/428') return ''
+      if (key === `checkout ${JINAN}`) return ''
       if (key === 'checkout -b bugfix/428') return ''
       throw new Error(`unexpected git args: ${key}`)
     }
-    await expect(createBugfixBranch(ROOT, 428, runGit)).resolves.toBe('bugfix/428')
+    await expect(createBugfixBranch(ROOT, 428, JINAN, runGit)).resolves.toBe('bugfix/428')
     expect(calls).toContainEqual(['checkout', '-b', 'bugfix/428'])
   })
 
   it('checks out an existing bugfix/<id> branch when not currently on it', async () => {
     const calls: string[][] = []
     const runGit: RunGit = async (_cwd, args) => {
-      calls.push(args)
+      calls.push([...args])
       const key = args.join(' ')
-      if (key === 'rev-parse --abbrev-ref HEAD') return 'dkh-ailpha-jinan\n'
+      if (key === 'rev-parse --abbrev-ref HEAD') return `${JINAN}\n`
       if (key === 'branch --list bugfix/428') return '  bugfix/428\n'
       if (key === 'checkout bugfix/428') return ''
       throw new Error(`unexpected git args: ${key}`)
     }
-    await expect(createBugfixBranch(ROOT, 428, runGit)).resolves.toBe('bugfix/428')
+    await expect(createBugfixBranch(ROOT, 428, JINAN, runGit)).resolves.toBe('bugfix/428')
     expect(calls).toContainEqual(['checkout', 'bugfix/428'])
+    expect(calls.some(c => c[0] === 'checkout' && c[1] === '-b')).toBe(false)
   })
 })
 
@@ -126,7 +158,7 @@ describe('commitAll', () => {
 
 describe('pushBranch', () => {
   it('pushes the named branch with upstream tracking', async () => {
-    const runGit = vi.fn(async (_cwd: string, args: string[]) => {
+    const runGit = vi.fn(async (_cwd: string, args: readonly string[]) => {
       expect(args).toEqual(['push', '-u', 'origin', 'bugfix/428'])
       return ''
     })

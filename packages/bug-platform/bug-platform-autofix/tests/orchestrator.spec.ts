@@ -168,10 +168,15 @@ describe('runOneTicket state machine', () => {
         return porcelainCalls === 1 ? '' : ' M src/views/assetVerification/index.vue\n'
       },
     })
-    const createMr = vi.fn(async () => ({ webUrl: 'http://gitlab.example.com/mr/1' }))
+    const ensureMr = vi.fn(async () => ({
+      webUrl: 'http://gitlab.example.com/mr/1',
+      iid: 1,
+      created: true,
+    }))
+    const addMrNote = vi.fn(async () => undefined)
 
     const outcome = await runOneTicket(
-      baseConfig({ client, agentRunner, runGit, createMr }),
+      baseConfig({ client, agentRunner, runGit, ensureMr, addMrNote }),
       ticket,
     )
 
@@ -181,6 +186,72 @@ describe('runOneTicket state machine', () => {
     expect(followups[0]?.body.assignee_change).toBeNull()
     expect(followups.at(-1)?.body.status_change).toBe('现场验证')
     expect(followups.at(-1)?.body.content).toContain('http://gitlab.example.com/mr/1')
+    expect(addMrNote).toHaveBeenCalledWith(
+      expect.objectContaining({
+        mergeRequestIid: 1,
+        body: expect.stringMatching(/commit:|abc123deadbeef|fixed/),
+      }),
+    )
+  })
+
+  it('on re-fix with existing MR: push, reuse MR, add platform followup + MR note', async () => {
+    const ticket = detail({ id: 325, target_menu: '资产核查' })
+    const { client, followups } = fakeClient({})
+    const agentRunner: AgentRunner = async () => ({ ok: true, summary: 'second pass fix' })
+    let porcelainCalls = 0
+    const runGit = cleanCustomGit({
+      'status --porcelain': () => {
+        porcelainCalls += 1
+        return porcelainCalls === 1 ? '' : ' M src/views/assetVerification/index.vue\n'
+      },
+      'rev-parse HEAD': '99d9ce66578ff777ee06c4d7ce716220178ef328\n',
+      'branch --list bugfix/325': '  bugfix/325\n',
+      'checkout bugfix/325': '',
+    })
+    const ensureMr = vi.fn(async () => ({
+      webUrl: 'http://gitlab.example.com/mr/8',
+      iid: 8,
+      created: false,
+    }))
+    const addMrNote = vi.fn(async () => undefined)
+    const store = new TicketStateStore([
+      {
+        ticketId: 325,
+        phase: 'done',
+        repo: 'custom',
+        branch: 'bugfix/325',
+        mrUrl: 'http://gitlab.example.com/mr/8',
+        updatedAt: '2026-09-10T00:00:00.000Z',
+      },
+    ])
+
+    const outcome = await runOneTicket(
+      baseConfig({
+        client,
+        agentRunner,
+        runGit,
+        ensureMr,
+        addMrNote,
+        stateStore: store,
+      }),
+      ticket,
+    )
+
+    expect(outcome).toEqual({ kind: 'done', mrUrl: 'http://gitlab.example.com/mr/8' })
+    expect(ensureMr).toHaveBeenCalledTimes(1)
+    expect(addMrNote).toHaveBeenCalledWith(
+      expect.objectContaining({
+        mergeRequestIid: 8,
+        body: expect.stringMatching(/99d9ce66578ff777ee06c4d7ce716220178ef328|second pass fix/),
+      }),
+    )
+    const successFollowups = followups.filter(f => f.body.status_change === '现场验证')
+    expect(successFollowups).toHaveLength(1)
+    expect(successFollowups[0]?.body.content).toContain('http://gitlab.example.com/mr/8')
+    expect(successFollowups[0]?.body.content).toMatch(/重新处理|99d9ce66578ff777ee06c4d7ce716220178ef328|second pass fix/)
+    expect(followups.some(f => f.body.content.includes('重新处理开始'))).toBe(true)
+    expect(store.get(325)?.phase).toBe('done')
+    expect(store.get(325)?.mrUrl).toBe('http://gitlab.example.com/mr/8')
   })
 
   it('skips unmapped tickets with optional followup and does not claim', async () => {
@@ -211,6 +282,43 @@ describe('runOneTicket state machine', () => {
     expect(agentRunner).not.toHaveBeenCalled()
   })
 
+  it('skips 网络安全数据大屏 even when mapped and force-loaded', async () => {
+    const menuIndex = loadMenuMapping({
+      systems: {
+        dash: {
+          items: [
+            {
+              target_menu: '网络安全数据大屏',
+              menu_path: '/dash',
+              menu_code: 'dash',
+              repo: 'custom',
+              branch: 'dkh-custom-jinan',
+              routeHint: '/dash',
+              filePath: 'src/views/dash/index.vue',
+              file_exists: true,
+            },
+          ],
+        },
+      },
+    })
+    const ticket = detail({ id: 501, target_menu: '网络安全数据大屏' })
+    const { client, followups, order } = fakeClient({})
+    const agentRunner = vi.fn(async () => ({ ok: true, summary: 'nope' }))
+
+    const outcome = await runOneTicket(
+      baseConfig({ client, agentRunner, menuIndex }),
+      ticket,
+    )
+
+    expect(outcome).toEqual({
+      kind: 'skipped',
+      reason: expect.stringMatching(/网络安全数据大屏/),
+    })
+    expect(followups[0]?.body.status_change == null || followups[0]?.body.status_change === '').toBe(true)
+    expect(order.some(s => s.includes('处理中'))).toBe(false)
+    expect(agentRunner).not.toHaveBeenCalled()
+  })
+
   it('on git/MR failure after local commit stays 处理中 with awaiting_push phase', async () => {
     const ticket = detail({ id: 428, target_menu: '资产核查' })
     const { client, followups } = fakeClient({})
@@ -226,16 +334,16 @@ describe('runOneTicket state machine', () => {
         throw new Error('push denied')
       },
     })
-    const createMr = vi.fn()
+    const ensureMr = vi.fn()
     const store = new TicketStateStore()
 
     const outcome = await runOneTicket(
-      baseConfig({ client, agentRunner, runGit, createMr, stateStore: store }),
+      baseConfig({ client, agentRunner, runGit, ensureMr, stateStore: store }),
       ticket,
     )
 
     expect(outcome).toMatchObject({ kind: 'awaiting_push', branch: 'bugfix/428' })
-    expect(createMr).not.toHaveBeenCalled()
+    expect(ensureMr).not.toHaveBeenCalled()
     expect(followups.at(-1)?.body.status_change).toBe('处理中')
     expect(followups.at(-1)?.body.content).toMatch(/待人工推送|awaiting|人工/)
     expect(store.get(428)?.phase).toBe('awaiting_push')
@@ -302,7 +410,10 @@ describe('runOneTicket state machine', () => {
       ],
     })
     const { client, downloads, order } = fakeClient({})
-    const agentRunner = vi.fn(async () => ({ ok: false, summary: 'stop-after-download' }))
+    const agentRunner = vi.fn(async (_opts: { cwd: string; brief: string }) => ({
+      ok: false,
+      summary: 'stop-after-download',
+    }))
 
     await runOneTicket(baseConfig({ client, agentRunner, runGit: cleanCustomGit() }), ticket)
 

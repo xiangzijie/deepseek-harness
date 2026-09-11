@@ -22,15 +22,15 @@
 
 ## Git 工作区
 
-辅助函数只接受单个 `localRoot`，不会跨工作区切换产品 jinan。`assertProductBranch(localRoot, expectedJinan)` 允许该 jinan 或 `bugfix/<digits>`；若 HEAD 是另一条 `*-jinan` 则硬失败。`assertClean` 要求 porcelain 状态为空。`createBugfixBranch`：已在 `bugfix/<id>` 则复用；分支已存在则 checkout；否则从当前 HEAD `checkout -b`。`commitAll` 执行 `add -A` + `commit` 并返回 `rev-parse HEAD`。`pushBranch` 执行 `push -u origin <branch>`。`listChangedFiles` 解析 porcelain 路径。测试可传入 `runGit(cwd, args)`；省略则使用 `defaultRunGit`。
+辅助函数只接受单个 `localRoot`，不会跨工作区切换产品 jinan。`assertProductBranch(localRoot, expectedJinan)` 允许该 jinan 或 `bugfix/<digits>`；若 HEAD 是另一条 `*-jinan` 则硬失败。`assertClean` 要求 porcelain 状态为空。`createBugfixBranch(localRoot, ticketId, expectedJinan)`：已在 `bugfix/<id>` 则复用；分支已存在则 checkout；否则先 checkout 到 `expectedJinan` 再 `checkout -b`，避免叠在上一单 `bugfix/*` 上。`commitAll` 执行 `add -A` + `commit` 并返回 `rev-parse HEAD`。`pushBranch` 执行 `push -u origin <branch>`。`listChangedFiles` 解析 porcelain 路径。测试可传入 `runGit(cwd, args)`；省略则使用 `defaultRunGit`。
 
 ## 可选 GitLab MR
 
-`createMergeRequest({ host, projectId, token, sourceBranch, targetBranch, title, description, fetchImpl? })` 以 `PRIVATE-TOKEN` 请求头 POST `/api/v4/projects/:id/merge_requests`，返回 `{ webUrl }`（来自响应 `web_url`）。`token` 缺失、为 null 或空字符串时抛出 `GitlabTokenMissingError`，编排可保持 `处理中`／`awaiting_push`，不得标 `现场验证`。测试可注入 `fetchImpl`。
+`ensureMergeRequest(...)` 先 `POST` 创建 MR；若源分支已有 MR（典型 HTTP 409），则按 `source_branch` 查出已有 MR 并复用。`addMergeRequestNote(...)` 向该 MR 写讨论备注。编排在**每次** push 成功后：ensure MR → 写 MR note（含 commit 与摘要）→ 平台 followup（`现场验证`，含 MR / commit / 摘要）。因此同一 `bugfix/<id>` 的第二次及以后修复不会因「MR 已存在」落入 `awaiting_push`，且每次都有独立评论。`createMergeRequest` 仍导出为仅创建的薄封装。`token` 缺失时抛出 `GitlabTokenMissingError`，编排保持 `处理中`／`awaiting_push`，不得标 `现场验证`。测试可注入 `fetchImpl`、`ensureMr`、`addMrNote`。
 
 ## 编排
 
-`runOneTicket(config, ticketIdOrDetail)` 实现领单 → 修复 → Git 状态机。可传入已加载的 `BugTicketDetail` 强制领单（如 `--ticket 428`），绕过列表状态白名单。映射决议在任何 `处理中` followup 之前完成；无映射／home 可选 followup 且 `status_change` 为空／null，不领单。领单：`status_change=处理中`，`assignee_change=null`。领单后再下附件（跳过 `file_size === 0`）。`lintEnabled`／`buildEnabled` 默认 `false`。MR 成功 → followup `现场验证`，`phase=done`；本地已 commit 但 push／MR 失败 → 保持 `处理中`，`phase=awaiting_push`；修复失败／无 diff → 保持 `处理中`，`phase=failed`。错误产品 jinan 硬失败且禁止自动 checkout。`runBatch(config, { maxTickets: 1 })` 先 `ensureToken`，再拉候选并调用 `runOneTicket` 至多 `maxTickets` 次。测试可注入 `agentRunner`、`runGit`、`createMr`；`buildAgentBrief`／`createDefaultAgentRunner` 负责 brief 与默认 `pnpm dsh --profile headless` 拉起。
+`runOneTicket(config, ticketIdOrDetail)` 实现领单 → 修复 → Git 状态机。可传入已加载的 `BugTicketDetail` 强制领单（如 `--ticket 428`），绕过列表状态白名单。映射决议在任何 `处理中` followup 之前完成；无映射／home 可选 followup 且 `status_change` 为空／null，不领单。领单：`status_change=处理中`，`assignee_change=null`。领单后再下附件（跳过 `file_size === 0`）。`lintEnabled`／`buildEnabled` 默认 `false`。MR 成功 → followup `现场验证`，`phase=done`；本地已 commit 但 push／MR 失败 → 保持 `处理中`，`phase=awaiting_push`；修复失败／无 diff → 保持 `处理中`，`phase=failed`。错误产品 jinan 硬失败且禁止自动 checkout。`runBatch(config, { maxTickets: 1 })` 先 `ensureToken`，再拉候选并调用 `runOneTicket` 至多 `maxTickets` 次。测试可注入 `agentRunner`、`runGit`、`ensureMr`、`addMrNote`；`buildAgentBrief`／`createDefaultAgentRunner` 负责 brief 与默认从 harness `apps/cli` 拉起 headless（需 `harnessRoot`，cwd 为产品仓）。
 
 ## 模型体验
 
@@ -43,7 +43,7 @@
 ## 已知限制与暂缓事项
 
 - Cordis `apply` 仅校验 Config；不在 `ctx` 上注册编排。
-- 默认 agent runner 是薄封装的 `pnpm dsh` spawn；生产应注入超时与更完整的退出解析。
+- 默认 agent runner 从 harness `apps/cli`（tsx + `harnessRoot`）拉起 headless，cwd 为产品工作区；应注入超时与更完整的退出解析，且禁止在产品仓内 `pnpm dsh`。
 - `WorkspaceRoots` 含 home 路径类型，但第一期不得改 home；映射到 `home` 时在领单前跳过。
 - 无定时轮询，亦无多单并发；`runBatch` 串行且由人工触发。
 - 自动转派后端处理人暂缓；失败 followup 保持 `处理中` 且不改指派。

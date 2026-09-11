@@ -179,7 +179,7 @@ export class BugPlatformClient {
         Authorization: `Bearer ${token}`,
         ...init?.headers,
       },
-      body: init?.body,
+      ...(init?.body === undefined ? {} : { body: init.body }),
     })
   }
 

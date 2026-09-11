@@ -40,8 +40,17 @@ export {
   pushBranch,
 } from './git-workspace.ts'
 
-export type { CreateMergeRequestOptions } from './gitlab-mr.ts'
-export { createMergeRequest, GitlabTokenMissingError } from './gitlab-mr.ts'
+export type {
+  AddMergeRequestNoteOptions,
+  CreateMergeRequestOptions,
+  EnsuredMergeRequest,
+} from './gitlab-mr.ts'
+export {
+  addMergeRequestNote,
+  createMergeRequest,
+  ensureMergeRequest,
+  GitlabTokenMissingError,
+} from './gitlab-mr.ts'
 
 export type { AgentBriefInput } from './agent-brief.ts'
 export { buildAgentBrief } from './agent-brief.ts'
@@ -52,7 +61,7 @@ export type {
   AgentRunnerResult,
   DefaultAgentRunnerOptions,
 } from './run-agent.ts'
-export { createDefaultAgentRunner } from './run-agent.ts'
+export { createDefaultAgentRunner, resolveHarnessTsxImport, resolveHarnessTsxTsconfig } from './run-agent.ts'
 
 export type {
   LintRunner,

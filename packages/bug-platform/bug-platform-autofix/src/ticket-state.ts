@@ -98,7 +98,9 @@ export function loadState(path: string): TicketStateStore {
   }
   let parsed: unknown
   try {
-    parsed = JSON.parse(readFileSync(path, 'utf8')) as unknown
+    // Strip a UTF-8 BOM if present (e.g. Windows editors / PowerShell Set-Content).
+    const text = readFileSync(path, 'utf8').replace(/^\uFEFF/, '')
+    parsed = JSON.parse(text) as unknown
   } catch (error) {
     // Re-throw with a stable prefix; keep the original parse error as cause.
     throw new Error(`ticket-state: failed to parse JSON at ${path}`, { cause: error })

@@ -83,4 +83,12 @@ describe('TicketStateStore load/save/get/upsert', () => {
     writeFileSync(path, '{"tickets":"nope"}', 'utf8')
     expect(() => loadState(path)).toThrow(/ticket-state/)
   })
+
+  it('loadState tolerates a UTF-8 BOM prefix', () => {
+    const path = tempStatePath()
+    const body = `${JSON.stringify({ tickets: [sampleRecord()] }, null, 2)}\n`
+    writeFileSync(path, `\uFEFF${body}`, 'utf8')
+    const loaded = loadState(path)
+    expect(loaded.get(428)?.phase).toBe('claimed')
+  })
 })
