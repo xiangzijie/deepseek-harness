@@ -15,6 +15,7 @@
 | `GITLAB_TOKEN` | 否 | GitLab `PRIVATE-TOKEN`；无 Token 时仍可本地 commit，但不会开 MR |
 
 可选覆盖路径：`BUG_PLATFORM_MAPPING_FILE`、`BUG_PLATFORM_STATE_FILE`、`BUG_PLATFORM_ASSETS_DIR`。
+视觉预跑（有截图时）：使用同一 `DEEPSEEK_API_KEY`；可选 `DEEPSEEK_BASE_URL`、`BUG_PLATFORM_VISION_MODEL`（默认 `deepseek-flash`）。观察结果写入 agent brief 的「截图观察（模型视觉）」节。
 
 ### Windows：从用户环境读取 `GITLAB_TOKEN`
 

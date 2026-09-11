@@ -19,6 +19,8 @@ export interface AgentBriefInput {
   routesFile: string
   /** Local screenshot/attachment paths that downloaded successfully. */
   screenshotPaths: readonly string[]
+  /** Optional Chinese observation from the DeepSeek vision pre-pass. */
+  visionObservation?: string
   /** Remote urls skipped (`file_size === 0`) or failed to download. */
   missingAssets?: readonly string[]
 }
@@ -29,7 +31,8 @@ export interface AgentBriefInput {
  * @returns a single prompt string.
  */
 export function buildAgentBrief(input: AgentBriefInput): string {
-  const { detail, resolved, localRoot, routesFile, screenshotPaths, missingAssets } = input
+  const { detail, resolved, localRoot, routesFile, screenshotPaths, missingAssets, visionObservation } =
+    input
   const followups = [...detail.followups].sort((a, b) =>
     a.created_at.localeCompare(b.created_at),
   )
@@ -64,6 +67,10 @@ export function buildAgentBrief(input: AgentBriefInput): string {
     '## 本地截图/附件',
     screenshotPaths.length === 0 ? '(无)' : screenshotPaths.map(p => `- ${p}`).join('\n'),
   ]
+
+  if (visionObservation !== undefined && visionObservation.trim().length > 0) {
+    lines.push('', '## 截图观察（模型视觉）', visionObservation.trim())
+  }
 
   if (missingAssets !== undefined && missingAssets.length > 0) {
     lines.push('', '## 缺失附件（已跳过）', ...missingAssets.map(u => `- ${u}`))

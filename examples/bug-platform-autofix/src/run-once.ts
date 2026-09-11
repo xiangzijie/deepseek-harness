@@ -153,12 +153,14 @@ async function main(): Promise<void> {
 
   const username = requireEnv('BUG_PLATFORM_USERNAME')
   const password = requireEnv('BUG_PLATFORM_PASSWORD')
-  requireEnv('DEEPSEEK_API_KEY')
+  const deepseekApiKey = requireEnv('DEEPSEEK_API_KEY')
 
   const baseUrl = process.env['BUG_PLATFORM_BASE_URL']?.trim() || DEFAULT_BASE_URL
   // Optional: set GITLAB_TOKEN in the process env (Windows User env is fine if
   // the shell inherits it). Never log the value.
   const gitlabToken = process.env['GITLAB_TOKEN']?.trim() || null
+  const deepseekBaseURL = process.env['DEEPSEEK_BASE_URL']?.trim()
+  const visionModel = process.env['BUG_PLATFORM_VISION_MODEL']?.trim()
 
   const mappingPath = process.env['BUG_PLATFORM_MAPPING_FILE']?.trim() || DEFAULT_MAPPING_FILE
   const statePath = process.env['BUG_PLATFORM_STATE_FILE']?.trim() || DEFAULT_STATE_FILE
@@ -187,6 +189,13 @@ async function main(): Promise<void> {
     assetsDir,
     lintEnabled: false,
     buildEnabled: false,
+    vision: {
+      apiKey: deepseekApiKey,
+      ...(deepseekBaseURL === undefined || deepseekBaseURL.length === 0
+        ? {}
+        : { baseURL: deepseekBaseURL }),
+      ...(visionModel === undefined || visionModel.length === 0 ? {} : { model: visionModel }),
+    },
     // Spawn harness `apps/cli` with product worktree as cwd — never `pnpm dsh` inside dkh-*.
     agentRunner: createDefaultAgentRunner({ harnessRoot: HARNESS_ROOT }),
   }

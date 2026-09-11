@@ -47,6 +47,10 @@ import {
 import type { AgentRunner } from './run-agent.ts'
 import { isExcludedTargetMenu, selectTickets } from './select.ts'
 import type { TicketPhase, TicketStateStore } from './ticket-state.ts'
+import {
+  describeScreenshots,
+  type VisionPreflightOptions,
+} from './vision-preflight.ts'
 
 /** Fixed product jinan branch names for the three worktrees. */
 export type ProductBranches = {
@@ -99,6 +103,11 @@ export interface OrchestratorConfig {
   addMrNote?: (opts: AddMergeRequestNoteOptions) => Promise<void>
   /** Invoked only when `lintEnabled` is true. */
   lintRunner?: LintRunner
+  /**
+   * When set, run DeepSeek vision on downloaded screenshots before claim and
+   * inject the observation into the agent brief. Omit to skip vision.
+   */
+  vision?: Omit<VisionPreflightOptions, 'ticketId'>
   /** When true (default), write an optional skip followup for unmapped/home. */
   writeSkipFollowup?: boolean
   /** Platform project id for list/get; defaults to `47`. */
@@ -187,6 +196,23 @@ export async function runOneTicket(
     return skipBeforeClaim(config, detail.id, resolved, branchName, preStop)
   }
 
+  let visionObservation: string | undefined
+  if (config.vision !== undefined && screenshotPaths.length > 0) {
+    const visionResult = await describeScreenshots(screenshotPaths, {
+      ...config.vision,
+      ticketId: detail.id,
+    })
+    if (visionResult.ok) {
+      visionObservation = visionResult.text
+    } else if (config.writeSkipFollowup !== false) {
+      await config.client.createFollowup(detail.id, {
+        content: `视觉预跑未成功（仍继续自动修复）：${visionResult.error}`,
+        status_change: null,
+        assignee_change: null,
+      })
+    }
+  }
+
   await config.client.createFollowup(detail.id, {
     content: isReprocess
       ? '自动修复重新处理开始：再次改为处理中（不改指派）'
@@ -224,6 +250,7 @@ export async function runOneTicket(
     routesFile,
     screenshotPaths,
     missingAssets,
+    ...(visionObservation === undefined ? {} : { visionObservation }),
   })
 
   let agentResult: { ok: boolean; summary: string }

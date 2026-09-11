@@ -86,6 +86,21 @@ export type {
 } from './orchestrator.ts'
 export { runBatch, runOneTicket } from './orchestrator.ts'
 
+export type {
+  VisionPreflightErr,
+  VisionPreflightOk,
+  VisionPreflightOptions,
+} from './vision-preflight.ts'
+export {
+  DEFAULT_MAX_BYTES_PER_IMAGE,
+  DEFAULT_MAX_VISION_IMAGES,
+  DEFAULT_VISION_BASE_URL,
+  DEFAULT_VISION_MODEL,
+  describeScreenshots,
+  fileToDataUrl,
+  mediaTypeForPath,
+} from './vision-preflight.ts'
+
 /** Cordis plugin name used by loader diagnostics. */
 export const name = 'bug-platform-autofix'
 
