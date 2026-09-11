@@ -137,9 +137,9 @@ Followup 写回字段（已验证）：`content`、`attachments`、`status_chang
 - 本地状态写入：`phase=claimed`，记录 `repo`、`branch`、时间戳。
 - 若 followup 失败：不创建分支、不调 agent；记错误并处理下一候选（或中止，可配置）。
 
-### 3.6 下载附件
+### 3.6 下载附件（领单前）
 
-- 下载主单 `screenshots[]` 与各 `followups[].attachments[]`。
+- 映射通过后、写「处理中」之前下载主单 `screenshots[]` 与各 `followups[].attachments[]`（供上下文预检与后续 brief）。
 - 跳过 `file_size === 0` 或下载失败的项，并在 Agent brief 中注明缺失。
 - 保存到跑批工作目录（如 `.dsh-bugfix/<ticket_id>/assets/`）；施加张数/总大小上限配置。
 - 相对路径用 `baseUrl` 拼接；请求带同一 Bearer。
