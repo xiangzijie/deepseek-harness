@@ -393,9 +393,36 @@ describe('runOneTicket state machine', () => {
     expect(followups.every(f => f.body.status_change !== '现场验证')).toBe(true)
   })
 
+  it('skips without claiming when worktree is dirty', async () => {
+    const ticket = detail({ id: 910, target_menu: '资产核查' })
+    const { client, followups, order } = fakeClient({})
+    const agentRunner = vi.fn(async () => ({ ok: true, summary: 'should-not-run' }))
+    const runGit: RunGit = async (_cwd, args) => {
+      const key = args.join(' ')
+      if (key === 'rev-parse --abbrev-ref HEAD') return 'dkh-custom-jinan\n'
+      if (key === 'status --porcelain') return '?? .ocr-tmp.ps1\n'
+      throw new Error(`should not reach: ${key}`)
+    }
+    const store = new TicketStateStore()
+
+    const outcome = await runOneTicket(
+      baseConfig({ client, agentRunner, runGit, stateStore: store }),
+      ticket,
+    )
+
+    expect(outcome.kind).toBe('skipped')
+    expect(String((outcome as { reason: string }).reason)).toMatch(/dirty|\.ocr-tmp/)
+    expect(agentRunner).not.toHaveBeenCalled()
+    expect(order.some(s => s.includes('处理中'))).toBe(false)
+    expect(followups.at(-1)?.body.status_change == null || followups.at(-1)?.body.status_change === '').toBe(
+      true,
+    )
+    expect(store.get(910)?.phase).toBe('skipped')
+  })
+
   it('never checks out a wrong product jinan when HEAD is mismatched', async () => {
     const ticket = detail({ id: 428, target_menu: '资产核查' })
-    const { client, followups } = fakeClient({})
+    const { client, followups, order } = fakeClient({})
     const agentRunner = vi.fn(async () => ({ ok: true, summary: 'fixed' }))
     const gitCalls: string[] = []
     const runGit: RunGit = async (_cwd, args) => {
@@ -412,12 +439,15 @@ describe('runOneTicket state machine', () => {
       ticket,
     )
 
-    expect(outcome.kind).toBe('failed')
+    expect(outcome.kind).toBe('skipped')
     expect(gitCalls.some(c => c.includes('checkout') && c.includes('dkh-custom-jinan'))).toBe(false)
     expect(gitCalls.some(c => c.startsWith('checkout'))).toBe(false)
     expect(agentRunner).not.toHaveBeenCalled()
-    expect(followups.at(-1)?.body.status_change).toBe('处理中')
-    expect(store.get(428)?.phase).toBe('failed')
+    expect(order.some(s => s.includes('处理中'))).toBe(false)
+    expect(followups.at(-1)?.body.status_change == null || followups.at(-1)?.body.status_change === '').toBe(
+      true,
+    )
+    expect(store.get(428)?.phase).toBe('skipped')
   })
 
   it('skips pre-claim when description is empty and there are no screenshots', async () => {

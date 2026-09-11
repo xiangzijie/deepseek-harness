@@ -149,7 +149,8 @@ Followup 写回字段（已验证）：`content`、`attachments`、`status_chang
 - 目标仅为映射得到的那一个 `localRoot`；**不得**切换到其它两个本地目录去改本单。
 - 开跑前断言：当前分支为本目录绑定的 jinan，或已是本单的 `bugfix/<ticket_id>`。若当前在其它产品 jinan（例如在 ailpha 目录上却是 `dkh-custom-jinan`）→ **中止并回写**，禁止自动 checkout「纠正」。
 - `git status` 干净；dirty 则失败并说明。
-- 仅在本目录内，从**该目录绑定的产品 jinan** 创建 `bugfix/<ticket_id>`（若当前停在其它 `bugfix/*` 上，须先 checkout 回 jinan 再 `checkout -b`，禁止叠前序单提交）；MR 目标为**同一产品 jinan**（同一 GitLab 项目内的对应分支）。
+- **以上工作区断言在领单（写「处理中」）之前执行**：未就绪只写跟进且不改状态，本地 `phase=skipped`。
+- 仅在本目录内，领单后再从**该目录绑定的产品 jinan** 创建 `bugfix/<ticket_id>`（若当前停在其它 `bugfix/*` 上，须先 checkout 回 jinan 再 `checkout -b`，禁止叠前序单提交）；MR 目标为**同一产品 jinan**（同一 GitLab 项目内的对应分支）。
 - 不得在本目录检出另一条产品 jinan 来改文件。
 - 状态：`phase=fixing`。
 

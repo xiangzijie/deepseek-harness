@@ -213,6 +213,20 @@ export async function runOneTicket(
     }
   }
 
+  // Workspace gates before claim: dirty / wrong jinan must not become 处理中.
+  try {
+    await assertProductBranch(localRoot, expectedJinan, config.runGit)
+    await assertClean(localRoot, config.runGit)
+  } catch (error) {
+    return skipUnclaimed(
+      config,
+      detail.id,
+      resolved,
+      branchName,
+      `工作区未就绪，未领单：${errorMessage(error)}`,
+    )
+  }
+
   await config.client.createFollowup(detail.id, {
     content: isReprocess
       ? '自动修复重新处理开始：再次改为处理中（不改指派）'
@@ -228,8 +242,6 @@ export async function runOneTicket(
   })
 
   try {
-    await assertProductBranch(localRoot, expectedJinan, config.runGit)
-    await assertClean(localRoot, config.runGit)
     await createBugfixBranch(localRoot, detail.id, expectedJinan, config.runGit)
   } catch (error) {
     const reason = errorMessage(error)
@@ -501,7 +513,25 @@ async function skipBeforeClaim(
   branch: string,
   stop: AutofixStop,
 ): Promise<TicketOutcome> {
-  const content = formatAutofixStopFollowup(stop)
+  return skipUnclaimed(config, ticketId, resolved, branch, formatAutofixStopFollowup(stop))
+}
+
+/**
+ * Pre-claim abort: platform followup without status change; local `skipped`.
+ * @param config - orchestrator config.
+ * @param ticketId - platform id.
+ * @param resolved - menu hit used for repo/branch bookkeeping.
+ * @param branch - planned bugfix branch name.
+ * @param content - followup / outcome text.
+ * @returns skipped outcome.
+ */
+async function skipUnclaimed(
+  config: OrchestratorConfig,
+  ticketId: number,
+  resolved: ResolvedMenu,
+  branch: string,
+  content: string,
+): Promise<TicketOutcome> {
   if (config.writeSkipFollowup !== false) {
     await config.client.createFollowup(ticketId, {
       content,
