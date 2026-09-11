@@ -15,16 +15,27 @@ export interface RunOnceArgs {
   status?: string
   /**
    * When set, run whitelist batches in a loop, sleeping this many seconds
-   * between rounds. Incompatible with `--ticket` / `--tickets`.
+   * between rounds. Incompatible with `--ticket` / `--tickets` and with
+   * `--continuous`.
    */
   pollIntervalSeconds?: number
+  /**
+   * When true, keep pulling batches of {@link RunOnceArgs.maxTickets}: process
+   * them serially, then fetch the next batch immediately (no fixed timer).
+   * Empty batches wait {@link DEFAULT_EMPTY_BATCH_BACKOFF_SECONDS} before retry.
+   * Incompatible with `--ticket` / `--tickets` and with `--poll-interval`.
+   */
+  continuous?: boolean
 }
 
+/** Default idle wait when `--continuous` sees an empty candidate batch. */
+export const DEFAULT_EMPTY_BATCH_BACKOFF_SECONDS = 60
+
 /**
- * Parse `--ticket`, `--tickets`, `--max`, `--status`, and `--poll-interval`
- * from `process.argv`-style args.
- * Force paths (`--ticket` / `--tickets`) are mutually exclusive with `--max`
- * and with `--poll-interval`.
+ * Parse `--ticket`, `--tickets`, `--max`, `--status`, `--poll-interval`, and
+ * `--continuous` from `process.argv`-style args.
+ * Force paths (`--ticket` / `--tickets`) are mutually exclusive with `--max`,
+ * `--poll-interval`, and `--continuous`.
  * @param argv - full argv including node and script path.
  * @returns normalized run-once flags.
  */
@@ -34,6 +45,7 @@ export function parseRunOnceArgs(argv: readonly string[]): RunOnceArgs {
   const maxRaw = flagValue(argv, '--max')
   const statusRaw = flagValue(argv, '--status')
   const pollRaw = flagValue(argv, '--poll-interval')
+  const continuous = argv.includes('--continuous')
 
   if (ticketRaw !== undefined && ticketsRaw !== undefined) {
     throw new Error('不能同时使用 --ticket 与 --tickets：单用 --ticket <id>，多用 --tickets <id,id,…>')
@@ -68,6 +80,10 @@ export function parseRunOnceArgs(argv: readonly string[]): RunOnceArgs {
     result.status = statusRaw
   }
 
+  if (pollRaw !== undefined && continuous) {
+    throw new Error('不能同时使用 --poll-interval 与 --continuous：定时休眠用前者，批完即拉下一批用后者')
+  }
+
   if (pollRaw !== undefined) {
     if (ticketIds.length > 0) {
       throw new Error('--poll-interval 仅用于白名单守护循环，不能与 --ticket/--tickets 同用')
@@ -77,6 +93,13 @@ export function parseRunOnceArgs(argv: readonly string[]): RunOnceArgs {
       '--poll-interval',
       '例如 --poll-interval 300（秒）',
     )
+  }
+
+  if (continuous) {
+    if (ticketIds.length > 0) {
+      throw new Error('--continuous 仅用于白名单守护循环，不能与 --ticket/--tickets 同用')
+    }
+    result.continuous = true
   }
 
   return result

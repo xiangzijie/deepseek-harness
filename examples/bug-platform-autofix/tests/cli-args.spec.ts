@@ -75,10 +75,30 @@ describe('parseRunOnceArgs', () => {
     })
   })
 
+  it('parses --continuous for immediate next-batch mode', () => {
+    expect(parseRunOnceArgs(['node', 'run-once.ts', '--max', '20', '--continuous'])).toEqual({
+      ticketIds: [],
+      maxTickets: 20,
+      continuous: true,
+    })
+  })
+
+  it('rejects --poll-interval together with --continuous', () => {
+    expect(() =>
+      parseRunOnceArgs(['node', 'run-once.ts', '--poll-interval', '60', '--continuous']),
+    ).toThrow(/不能同时使用 --poll-interval 与 --continuous/)
+  })
+
   it('rejects --poll-interval with --ticket', () => {
     expect(() =>
       parseRunOnceArgs(['node', 'run-once.ts', '--poll-interval', '60', '--ticket', '428']),
     ).toThrow(/--poll-interval/)
+  })
+
+  it('rejects --continuous with --ticket', () => {
+    expect(() =>
+      parseRunOnceArgs(['node', 'run-once.ts', '--continuous', '--ticket', '428']),
+    ).toThrow(/--continuous/)
   })
 
   it('rejects non-positive --poll-interval', () => {

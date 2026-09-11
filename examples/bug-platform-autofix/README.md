@@ -65,12 +65,19 @@ node --import tsx/esm examples/bug-platform-autofix/src/run-once.ts --max 1
 node --import tsx/esm examples/bug-platform-autofix/src/run-once.ts --max 3 --status 待确认,验证未通过,转派,转需求
 ```
 
-### 自动流水（守护轮询）
+### 自动流水（守护）
 
-加 `--poll-interval <秒>`：白名单跑批循环执行，每轮结束后休眠；Ctrl+C / SIGTERM 完成本轮后退出。每轮失败会打日志并继续下一轮。默认串行（建议 `--max 1`）。
+**推荐：连续批处理**（批内串行修完立刻拉下一批，不按固定时钟）：
 
 ```powershell
-# 示例：每 5 分钟尝试修 1 单（保持窗口开着，或挂任务计划）
+node --import tsx/esm examples/bug-platform-autofix/src/run-once.ts --max 20 --continuous
+```
+
+空批（没有候选）时等待 60 秒再试，避免空转打满 API。
+
+**可选：定时轮询**（每 N 秒跑一批，与 `--continuous` 互斥）：
+
+```powershell
 node --import tsx/esm examples/bug-platform-autofix/src/run-once.ts --max 1 --poll-interval 300
 ```
 

@@ -1,36 +1,42 @@
 /**
- * Serial poll loop for bug-platform autofix daemon mode (phase-2 item 1).
+ * Serial poll / continuous batch loop for bug-platform autofix daemon mode.
  */
 
 /** Dependencies for {@link runPollLoop} (injectable for tests). */
 export interface PollLoopDeps {
-  /** One batch round (claim/fix/save belongs to the caller). */
-  runRound: () => Promise<void>
+  /**
+   * One batch round (claim/fix/save belongs to the caller).
+   * @returns how many tickets were attempted in this round (0 = empty).
+   */
+  runRound: () => Promise<number>
   /** Sleep between rounds; tests inject a no-op or fake clock. */
   sleep: (ms: number) => Promise<void>
+  /**
+   * Delay after a round. Return 0 to start the next round immediately
+   * (typical when the previous round processed tickets).
+   * @param processed - tickets attempted in the round that just finished.
+   */
+  delayMsAfterRound: (processed: number) => number
   /** Return false to stop after the current round finishes (SIGINT). */
   shouldContinue: () => boolean
   /** Called when a round throws; loop continues unless the handler rethrows. */
   onRoundError?: (error: unknown) => void
   /** Optional hook after a successful round (logging). */
-  onRoundComplete?: () => void
+  onRoundComplete?: (processed: number) => void
 }
 
 /**
- * Run `runRound` then sleep `intervalMs`, repeating until `shouldContinue` is false.
- * Errors in a round are reported via `onRoundError` and do not abort the loop
- * unless that handler throws.
- * @param intervalMs - delay after each round (including empty batches).
+ * Repeat `runRound` until `shouldContinue` is false.
+ * After each round, sleeps `delayMsAfterRound(processed)` ms (0 = immediate next batch).
+ * Round errors go to `onRoundError` and do not abort unless that handler throws.
  * @param deps - injectable round/sleep/stop hooks.
  */
-export async function runPollLoop(intervalMs: number, deps: PollLoopDeps): Promise<void> {
-  if (!Number.isInteger(intervalMs) || intervalMs <= 0) {
-    throw new Error(`poll intervalMs 必须是正整数，收到: ${intervalMs}`)
-  }
+export async function runPollLoop(deps: PollLoopDeps): Promise<void> {
   while (deps.shouldContinue()) {
+    let processed = 0
     try {
-      await deps.runRound()
-      deps.onRoundComplete?.()
+      processed = await deps.runRound()
+      deps.onRoundComplete?.(processed)
     } catch (error) {
       if (deps.onRoundError === undefined) {
         throw error
@@ -38,6 +44,12 @@ export async function runPollLoop(intervalMs: number, deps: PollLoopDeps): Promi
       deps.onRoundError(error)
     }
     if (!deps.shouldContinue()) break
-    await deps.sleep(intervalMs)
+    const delayMs = deps.delayMsAfterRound(processed)
+    if (!Number.isInteger(delayMs) || delayMs < 0) {
+      throw new Error(`delayMsAfterRound 必须返回非负整数，收到: ${delayMs}`)
+    }
+    if (delayMs > 0) {
+      await deps.sleep(delayMs)
+    }
   }
 }

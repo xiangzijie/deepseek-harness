@@ -21,7 +21,7 @@ import {
   type TicketOutcome,
   type TicketStateStore,
 } from '@deepseek-ai/dsh-bug-platform-autofix'
-import { parseRunOnceArgs } from './cli-args.ts'
+import { parseRunOnceArgs, DEFAULT_EMPTY_BATCH_BACKOFF_SECONDS } from './cli-args.ts'
 import { runPollLoop } from './poll-loop.ts'
 
 /** deepseek-harness worktree root (parent of `examples/`). */
@@ -119,13 +119,14 @@ function sleep(ms: number): Promise<void> {
  * @param statePath - path for {@link saveState}.
  * @param maxTickets - batch size.
  * @param status - optional list status override.
+ * @returns number of tickets attempted in this round.
  */
 async function runWhitelistRound(
   config: OrchestratorConfig,
   statePath: string,
   maxTickets: number,
   status: string | undefined,
-): Promise<void> {
+): Promise<number> {
   process.stdout.write(
     `按白名单选单跑批（最多 ${maxTickets} 单${status === undefined ? '' : `，status=${status}`}）…\n`,
   )
@@ -140,12 +141,15 @@ async function runWhitelistRound(
     process.stdout.write(`${formatOutcome(outcome)}\n`)
   }
   saveState(statePath, config.stateStore)
+  return batchOutcomes.length
 }
 
 async function main(): Promise<void> {
   assertHarnessBuilt(HARNESS_ROOT)
 
-  const { ticketIds, maxTickets, status, pollIntervalSeconds } = parseRunOnceArgs(process.argv)
+  const { ticketIds, maxTickets, status, pollIntervalSeconds, continuous } = parseRunOnceArgs(
+    process.argv,
+  )
 
   const username = requireEnv('BUG_PLATFORM_USERNAME')
   const password = requireEnv('BUG_PLATFORM_PASSWORD')
@@ -216,29 +220,47 @@ async function main(): Promise<void> {
       return
     }
 
-    if (pollIntervalSeconds !== undefined) {
-      process.stdout.write(
-        `守护循环启动：每 ${pollIntervalSeconds}s 跑一批（max=${maxTickets}），Ctrl+C 停止。\n`,
-      )
+    if (pollIntervalSeconds !== undefined || continuous === true) {
+      const modeLabel =
+        continuous === true
+          ? `连续批处理：每批最多 ${maxTickets} 单，批内串行，批完立刻拉下一批（空批等待 ${DEFAULT_EMPTY_BATCH_BACKOFF_SECONDS}s）`
+          : `定时轮询：每 ${pollIntervalSeconds}s 跑一批（max=${maxTickets}）`
+      process.stdout.write(`守护循环启动：${modeLabel}，Ctrl+C 停止。\n`)
       process.on('SIGINT', onStop)
       process.on('SIGTERM', onStop)
       try {
-        await runPollLoop(pollIntervalSeconds * 1000, {
+        await runPollLoop({
           runRound: async () => {
             const roundStore = loadState(statePath)
             const roundConfig: OrchestratorConfig = { ...config, stateStore: roundStore }
-            await runWhitelistRound(roundConfig, statePath, maxTickets, status)
+            return await runWhitelistRound(roundConfig, statePath, maxTickets, status)
           },
           sleep,
+          delayMsAfterRound: (processed) => {
+            if (continuous === true) {
+              return processed === 0 ? DEFAULT_EMPTY_BATCH_BACKOFF_SECONDS * 1000 : 0
+            }
+            return (pollIntervalSeconds ?? 0) * 1000
+          },
           shouldContinue: () => keepPolling,
           onRoundError: (error) => {
             const message = error instanceof Error ? error.message : String(error)
-            process.stderr.write(`本轮失败（将继续轮询）: ${message}\n`)
+            process.stderr.write(`本轮失败（将继续）: ${message}\n`)
           },
-          onRoundComplete: () => {
-            process.stdout.write(
-              `本轮结束，${keepPolling ? `${pollIntervalSeconds}s 后下一轮` : '即将退出'}…\n`,
-            )
+          onRoundComplete: (processed) => {
+            if (!keepPolling) {
+              process.stdout.write('本轮结束，即将退出…\n')
+              return
+            }
+            if (continuous === true) {
+              process.stdout.write(
+                processed === 0
+                  ? `本轮无候选，${DEFAULT_EMPTY_BATCH_BACKOFF_SECONDS}s 后重试…\n`
+                  : `本批 ${processed} 单已处理完，立刻拉下一批…\n`,
+              )
+              return
+            }
+            process.stdout.write(`本轮结束，${pollIntervalSeconds}s 后下一轮…\n`)
           },
         })
       } finally {
