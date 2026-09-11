@@ -1,7 +1,7 @@
 /**
  * End-to-end orchestrator for one ticket / one batch (design §3).
  * Mapping is resolved before any `处理中` claim; home / unmapped /
- * {@link EXCLUDED_TARGET_MENU} never claim.
+ * {@link isExcludedTargetMenu} never claim.
  *
  * @module @deepseek-ai/dsh-bug-platform-autofix/orchestrator
  */
@@ -44,7 +44,7 @@ import {
   type ResolvedMenu,
 } from './menu-mapping.ts'
 import type { AgentRunner } from './run-agent.ts'
-import { EXCLUDED_TARGET_MENU, selectTickets } from './select.ts'
+import { isExcludedTargetMenu, selectTickets } from './select.ts'
 import type { TicketPhase, TicketStateStore } from './ticket-state.ts'
 
 /** Fixed product jinan branch names for the three worktrees. */
@@ -115,12 +115,12 @@ export type TicketOutcome =
 export interface RunBatchOptions {
   /** Max tickets to attempt in this batch; defaults to `1`. */
   maxTickets?: number
-  /** Comma-separated list status filter; defaults to `待确认,验证未通过`. */
+  /** Comma-separated list status filter; defaults to `待确认,验证未通过,转派,转需求`. */
   status?: string
 }
 
 const DEFAULT_PROJECT_ID = 47
-const DEFAULT_LIST_STATUS = '待确认,验证未通过'
+const DEFAULT_LIST_STATUS = '待确认,验证未通过,转派,转需求'
 
 /**
  * Run the §3 state machine for one ticket.
@@ -140,8 +140,8 @@ export async function runOneTicket(
       : ticketIdOrDetail
 
   const targetMenu = detail.target_menu
-  if (targetMenu === EXCLUDED_TARGET_MENU) {
-    const reason = `排除菜单：${EXCLUDED_TARGET_MENU}，保持原状态`
+  if (isExcludedTargetMenu(targetMenu)) {
+    const reason = `排除菜单：${targetMenu}，保持原状态`
     if (config.writeSkipFollowup !== false) {
       await config.client.createFollowup(detail.id, {
         content: reason,
@@ -394,8 +394,8 @@ function skipReason(index: MenuMappingIndex, targetMenu: string | null): string 
   if (targetMenu === null || targetMenu.length === 0) {
     return '无菜单映射：target_menu 为空，保持原状态'
   }
-  if (targetMenu === EXCLUDED_TARGET_MENU) {
-    return `排除菜单：${EXCLUDED_TARGET_MENU}，保持原状态`
+  if (isExcludedTargetMenu(targetMenu)) {
+    return `排除菜单：${targetMenu}，保持原状态`
   }
   const hits = index.items.filter(item => item.targetMenu === targetMenu)
   if (hits.some(item => item.repo === 'home')) {

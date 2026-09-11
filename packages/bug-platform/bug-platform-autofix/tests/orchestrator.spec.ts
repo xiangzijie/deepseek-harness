@@ -325,6 +325,43 @@ describe('runOneTicket state machine', () => {
     expect(agentRunner).not.toHaveBeenCalled()
   })
 
+  it('skips 网络安全指挥大屏 even when mapped and force-loaded', async () => {
+    const menuIndex = loadMenuMapping({
+      systems: {
+        dash: {
+          items: [
+            {
+              target_menu: '网络安全指挥大屏',
+              menu_path: '/cmd-dash',
+              menu_code: 'cmd-dash',
+              repo: 'custom',
+              branch: 'dkh-custom-jinan',
+              routeHint: '/cmd-dash',
+              filePath: 'src/views/cmdDash/index.vue',
+              file_exists: true,
+            },
+          ],
+        },
+      },
+    })
+    const ticket = detail({ id: 502, target_menu: '网络安全指挥大屏' })
+    const { client, followups, order } = fakeClient({})
+    const agentRunner = vi.fn(async () => ({ ok: true, summary: 'nope' }))
+
+    const outcome = await runOneTicket(
+      baseConfig({ client, agentRunner, menuIndex }),
+      ticket,
+    )
+
+    expect(outcome).toEqual({
+      kind: 'skipped',
+      reason: expect.stringMatching(/网络安全指挥大屏/),
+    })
+    expect(followups[0]?.body.status_change == null || followups[0]?.body.status_change === '').toBe(true)
+    expect(order.some(s => s.includes('处理中'))).toBe(false)
+    expect(agentRunner).not.toHaveBeenCalled()
+  })
+
   it('on git/MR failure after local commit stays 处理中 with awaiting_push phase', async () => {
     const ticket = detail({ id: 428, target_menu: '资产核查' })
     const { client, followups } = fakeClient({})

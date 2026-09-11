@@ -34,11 +34,13 @@ describe('selectTickets', () => {
       [
         ticket({ id: 1, target_menu: '支撑单位' }),
         ticket({ id: 2, target_menu: '流量监测', status: '验证未通过' }),
+        ticket({ id: 3, target_menu: '支撑单位', status: '转派' }),
+        ticket({ id: 4, target_menu: '支撑单位', status: '转需求' }),
       ],
       index,
       new TicketStateStore(),
     )
-    expect(selected.map(t => t.id)).toEqual([1, 2])
+    expect(selected.map(t => t.id)).toEqual([1, 2, 3, 4])
   })
 
   it('drops assigned tickets', () => {
@@ -52,7 +54,7 @@ describe('selectTickets', () => {
 
   it('drops tickets outside the status allow-list', () => {
     const selected = selectTickets(
-      [ticket({ id: 1, status: '转派' })],
+      [ticket({ id: 1, status: '处理中' })],
       index,
       new TicketStateStore(),
     )
@@ -69,7 +71,7 @@ describe('selectTickets', () => {
     expect(selected.map(t => t.id)).toEqual([428])
   })
 
-  it('excludes 网络安全数据大屏 even when mapped', () => {
+  it('excludes 网络安全数据大屏 and 网络安全指挥大屏 even when mapped', () => {
     const dashIndex = loadMenuMapping({
       systems: {
         dash: {
@@ -84,12 +86,25 @@ describe('selectTickets', () => {
               filePath: 'src/views/dash/index.vue',
               file_exists: true,
             },
+            {
+              target_menu: '网络安全指挥大屏',
+              menu_code: 'CmdDash',
+              menu_path: '大屏/网络安全指挥大屏',
+              repo: 'custom',
+              branch: 'dkh-custom-jinan',
+              routeHint: '/cmd-dash',
+              filePath: 'src/views/cmdDash/index.vue',
+              file_exists: true,
+            },
           ],
         },
       },
     })
     const selected = selectTickets(
-      [ticket({ id: 1, target_menu: '网络安全数据大屏' })],
+      [
+        ticket({ id: 1, target_menu: '网络安全数据大屏' }),
+        ticket({ id: 2, target_menu: '网络安全指挥大屏' }),
+      ],
       dashIndex,
       new TicketStateStore(),
     )

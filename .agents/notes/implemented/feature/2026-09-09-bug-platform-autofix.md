@@ -21,7 +21,7 @@ A full Service Definition / Provider / Consumer seam and installable bundle rema
 
 The three local roots (`dkh-custom`, `dkh-ailpha`, `dkh-home`) share one GitLab project and bind one product jinan each. Mapping resolves a single `localRoot`; all edit / lint / commit / push / MR work stays in that directory. Helpers never cross-checkout another product `*-jinan` into the wrong root; wrong HEAD hard-fails instead of auto-correcting. `createBugfixBranch` checks out the bound jinan before `checkout -b` so new ticket branches do not stack on a prior `bugfix/*` tip.
 
-`menu-mapping.json` (`systems.*.items[]`) is the mapping authority. `resolveMenu` exact-matches `target_menu`, keeps only `custom` / `ailpha`, prefers `file_exists`, then **custom over ailpha**, and returns null for unknown, null repo, or **home**. Filing must select leaf menus; description text is not used for menu resolution (design §4.3).
+`menu-mapping.json` (`systems.*.items[]`) is the mapping authority. `resolveMenu` exact-matches `target_menu`, keeps only `custom` / `ailpha`, prefers `file_exists`, then **custom over ailpha**, and returns null for unknown, null repo, or **home**. Filing must select leaf menus; description text is not used for menu resolution (design §4.3). Default list statuses are `待确认` / `验证未通过` / `转派` / `转需求`; `网络安全数据大屏` and `网络安全指挥大屏` are hard-excluded.
 
 ### Gates, GitLab, and re-fix
 

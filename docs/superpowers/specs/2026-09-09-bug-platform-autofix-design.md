@@ -45,9 +45,9 @@
 列表查询第一期固定语义：
 
 - `project_id=47`
-- `status=待确认,验证未通过`（实现时可分页）
+- `status=待确认,验证未通过,转派,转需求`（实现时可分页）
 - 不按 `version_id` 过滤
-- 客户端再过滤：`assignee_id == null`；`target_menu !== "网络安全数据大屏"`
+- 客户端再过滤：`assignee_id == null`；`target_menu` 不是 `网络安全数据大屏`／`网络安全指挥大屏`
 
 Followup 写回字段（已验证）：`content`、`attachments`、`status_change`、`issue_type_change`、`assignee_change`、`plan_solve_date_change`。
 
@@ -110,8 +110,8 @@ Followup 写回字段（已验证）：`content`、`attachments`、`status_chang
 
 ### 3.2 选单与幂等
 
-- `GET /api/bug-tickets`：`project_id=47`，`status=待确认,验证未通过`，按页拉取直至满足「本批已修/已尝试上限」或无更多页。
-- 客户端过滤：保留 `assignee_id == null` 且 `target_menu !== "网络安全数据大屏"`。
+- `GET /api/bug-tickets`：`project_id=47`，`status=待确认,验证未通过,转派,转需求`，按页拉取直至满足「本批已修/已尝试上限」或无更多页。
+- 客户端过滤：保留 `assignee_id == null` 且 `target_menu` 不是 `网络安全数据大屏`／`网络安全指挥大屏`。
 - 读取本地状态文件：若该 `ticket_id` 的 `phase` 为进行中（如 `claimed` / `fixing` / `awaiting_push`）或已成功闭环且策略禁止重开，则跳过。
 - 默认每批只处理 1 单；配置 `maxTickets` 时可连续尝试多个候选，但第一期仍建议串行（并发=1）。
 
@@ -211,10 +211,10 @@ Followup 写回字段（已验证）：`content`、`attachments`、`status_chang
   - 可修：`repo` 为 `custom` 或 `ailpha`，且建议 `file_exists === true`；`repo == null` 或无法定位 → 视为无映射，跳过。
   - 多条命中：优先 `custom`，再 `ailpha`；仍冲突时用 `menu_path` / `menu_code` 消歧。
   - 指向 home 或非 custom/ailpha → 跳过。
-  - `target_menu === "网络安全数据大屏"` 仍由选单过滤排除（映射中即使存在也不领）。
+  - `target_menu` 为 `网络安全数据大屏` 或 `网络安全指挥大屏` 仍由选单过滤排除（映射中即使存在也不领）。
 - **已验证样例**：
   - bug `387`（`支撑单位`）→ `repo=custom`，`filePath=src/views/networkSecurityIndustry/index.vue`
-  - **试点单** bug `428`（`资产核查`）→ `repo=custom`，`routeHint=/assets/assetVerification`，`filePath=src/views/assetVerification/index.vue`；最新跟进：`/api/company/listPageV2` 需 `application/json`。注意：状态为 `转派`，不在默认选单白名单，跑批须 `--ticket 428` 强制领单。
+  - **试点单** bug `428`（`资产核查`）→ `repo=custom`，`routeHint=/assets/assetVerification`，`filePath=src/views/assetVerification/index.vue`；最新跟进：`/api/company/listPageV2` 需 `application/json`。状态可为 `转派`（已在默认选单白名单）。
 - **可选**：Config 增加 `menuAllowlist`（仅跑指定 `target_menu`）；缺省则凡可解析且可修的菜单均可尝试。
 
 ## 5. 状态机与回写

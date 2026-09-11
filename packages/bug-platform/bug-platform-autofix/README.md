@@ -16,7 +16,7 @@ Library-first helpers for internal bug-platform autofix: load `menu-mapping.json
 
 ## Selection and local state
 
-`selectTickets(tickets, index, store, options?)` keeps rows where `assignee_id` is null, `status` is in the allow-list (default `待确认` / `验证未通过`), `target_menu` is not `网络安全数据大屏`, `resolveMenu` returns a hit, and the ticket is not active in `TicketStateStore` (`claimed` / `fixing` / `awaiting_push`). Pass `options.statuses` to override the allow-list.
+`selectTickets(tickets, index, store, options?)` keeps rows where `assignee_id` is null, `status` is in the allow-list (default `待确认` / `验证未通过` / `转派` / `转需求`), `target_menu` is not `网络安全数据大屏` or `网络安全指挥大屏`, `resolveMenu` returns a hit, and the ticket is not active in `TicketStateStore` (`claimed` / `fixing` / `awaiting_push`). Pass `options.statuses` to override the allow-list.
 
 `loadState(path)` / `saveState(path, store)` read and write `{ tickets: TicketRecord[] }`. A missing file loads an empty `TicketStateStore`. `isActive(record)` is true for in-progress phases; `store.get` / `store.upsert` mutate the in-memory map.
 

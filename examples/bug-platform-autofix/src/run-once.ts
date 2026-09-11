@@ -150,7 +150,7 @@ async function main(): Promise<void> {
     await client.ensureToken()
 
     if (ticketIds.length > 0) {
-      // Force path: load each id and skip list status whitelist (e.g. 428 转派).
+      // Force path: load each id and skip list status whitelist when needed.
       process.stdout.write(
         `强制处理 ${ticketIds.length} 单（绕过选单白名单）：${ticketIds.join(', ')}…\n`,
       )

@@ -18,6 +18,8 @@ export type { SelectableTicket, SelectTicketsOptions } from './select.ts'
 export {
   DEFAULT_ELIGIBLE_STATUSES,
   EXCLUDED_TARGET_MENU,
+  EXCLUDED_TARGET_MENUS,
+  isExcludedTargetMenu,
   selectTickets,
 } from './select.ts'
 

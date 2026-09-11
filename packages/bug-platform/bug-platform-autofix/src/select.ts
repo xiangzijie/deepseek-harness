@@ -15,16 +15,37 @@ export interface SelectableTicket {
 }
 
 /** Default platform statuses accepted when callers omit {@link SelectTicketsOptions.statuses}. */
-export const DEFAULT_ELIGIBLE_STATUSES: readonly string[] = ['待确认', '验证未通过']
+export const DEFAULT_ELIGIBLE_STATUSES: readonly string[] = [
+  '待确认',
+  '验证未通过',
+  '转派',
+  '转需求',
+]
 
-/** Menu label that is never claimed, even if present in the mapping table. */
-export const EXCLUDED_TARGET_MENU = '网络安全数据大屏'
+/** Menu labels that are never claimed, even if present in the mapping table. */
+export const EXCLUDED_TARGET_MENUS: readonly string[] = [
+  '网络安全数据大屏',
+  '网络安全指挥大屏',
+]
+
+/** Historical alias for the first excluded menu label. */
+export const EXCLUDED_TARGET_MENU: string = '网络安全数据大屏'
+
+/**
+ * Whether `targetMenu` is in the hard-excluded dashboard allow-deny list.
+ * @param targetMenu - ticket `target_menu` (may be null).
+ * @returns true when autofix must skip without claiming.
+ */
+export function isExcludedTargetMenu(targetMenu: string | null | undefined): boolean {
+  if (targetMenu === null || targetMenu === undefined) return false
+  return (EXCLUDED_TARGET_MENUS as readonly string[]).includes(targetMenu)
+}
 
 /** Options for {@link selectTickets}. */
 export interface SelectTicketsOptions {
   /**
    * Status allow-list. Defaults to {@link DEFAULT_ELIGIBLE_STATUSES}.
-   * Use an explicit list (e.g. `['转派']`) to force-select a pilot ticket.
+   * Use an explicit list (e.g. `['处理中']`) to force-select atypical statuses.
    */
   statuses?: readonly string[]
 }
@@ -51,7 +72,7 @@ export function selectTickets(
     if (!statuses.has(ticket.status)) {
       return false
     }
-    if (ticket.target_menu === null || ticket.target_menu === EXCLUDED_TARGET_MENU) {
+    if (ticket.target_menu === null || isExcludedTargetMenu(ticket.target_menu)) {
       return false
     }
     if (resolveMenu(index, ticket.target_menu) === null) {

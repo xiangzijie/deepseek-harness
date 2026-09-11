@@ -21,7 +21,7 @@ Status: implemented
 
 三个本地根目录（`dkh-custom`、`dkh-ailpha`、`dkh-home`）共用同一 GitLab 项目，各自绑定一条产品 jinan。映射只决议一个 `localRoot`；修改／lint／commit／push／MR 均只在该目录进行。辅助函数禁止跨目录把另一条产品 `*-jinan` checkout 进错误根目录；错误 HEAD 硬失败，不做自动纠正。`createBugfixBranch` 在 `checkout -b` 前先 checkout 绑定 jinan，避免新单叠在上一单 `bugfix/*` 上。
 
-权威映射文件为 `menu-mapping.json`（`systems.*.items[]`）。`resolveMenu` 精确匹配 `target_menu`，只保留 `custom`／`ailpha`，优先 `file_exists`，再**优先 custom 于 ailpha**；未知、`repo == null` 或 **home** 返回 null。提报须选末端菜单；描述不参与菜单决议（设计 §4.3）。
+权威映射文件为 `menu-mapping.json`（`systems.*.items[]`）。`resolveMenu` 精确匹配 `target_menu`，只保留 `custom`／`ailpha`，优先 `file_exists`，再**优先 custom 于 ailpha**；未知、`repo == null` 或 **home** 返回 null。提报须选末端菜单；描述不参与菜单决议（设计 §4.3）。默认列表状态含 `待确认`／`验证未通过`／`转派`／`转需求`；排除 `网络安全数据大屏` 与 `网络安全指挥大屏`。
 
 ### 门禁、GitLab 与再次修单
 
