@@ -1,5 +1,5 @@
 /**
- * Manual one-shot / force-ticket / batch entry for bug-platform autofix (phase 1).
+ * Manual one-shot / force-ticket / batch / poll entry for bug-platform autofix.
  * Library-only: no cordis.yml; constructs clients and calls `runOneTicket` / `runBatch`.
  */
 
@@ -19,8 +19,10 @@ import {
   saveState,
   type OrchestratorConfig,
   type TicketOutcome,
+  type TicketStateStore,
 } from '@deepseek-ai/dsh-bug-platform-autofix'
 import { parseRunOnceArgs } from './cli-args.ts'
+import { runPollLoop } from './poll-loop.ts'
 
 /** deepseek-harness worktree root (parent of `examples/`). */
 const HARNESS_ROOT = fileURLToPath(new URL('../..', import.meta.url))
@@ -101,10 +103,49 @@ function formatOutcome(outcome: TicketOutcome): string {
   }
 }
 
+/**
+ * @param ms - delay in milliseconds.
+ * @returns a promise that resolves after `ms`.
+ */
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms)
+  })
+}
+
+/**
+ * Run one whitelist batch round and persist local state.
+ * @param config - orchestrator config (mutates `stateStore` in place).
+ * @param statePath - path for {@link saveState}.
+ * @param maxTickets - batch size.
+ * @param status - optional list status override.
+ */
+async function runWhitelistRound(
+  config: OrchestratorConfig,
+  statePath: string,
+  maxTickets: number,
+  status: string | undefined,
+): Promise<void> {
+  process.stdout.write(
+    `按白名单选单跑批（最多 ${maxTickets} 单${status === undefined ? '' : `，status=${status}`}）…\n`,
+  )
+  const batchOutcomes = await runBatch(config, {
+    maxTickets,
+    ...(status === undefined ? {} : { status }),
+  })
+  if (batchOutcomes.length === 0) {
+    process.stdout.write('没有可处理的候选单。\n')
+  }
+  for (const outcome of batchOutcomes) {
+    process.stdout.write(`${formatOutcome(outcome)}\n`)
+  }
+  saveState(statePath, config.stateStore)
+}
+
 async function main(): Promise<void> {
   assertHarnessBuilt(HARNESS_ROOT)
 
-  const { ticketIds, maxTickets, status } = parseRunOnceArgs(process.argv)
+  const { ticketIds, maxTickets, status, pollIntervalSeconds } = parseRunOnceArgs(process.argv)
 
   const username = requireEnv('BUG_PLATFORM_USERNAME')
   const password = requireEnv('BUG_PLATFORM_PASSWORD')
@@ -120,7 +161,7 @@ async function main(): Promise<void> {
   const assetsDir = process.env['BUG_PLATFORM_ASSETS_DIR']?.trim() || DEFAULT_ASSETS_DIR
 
   const menuIndex = loadMenuMapping(JSON.parse(readFileSync(mappingPath, 'utf8')) as unknown)
-  const stateStore = loadState(statePath)
+  const stateStore: TicketStateStore = loadState(statePath)
 
   const client = new BugPlatformClient({
     baseUrl,
@@ -146,11 +187,16 @@ async function main(): Promise<void> {
     agentRunner: createDefaultAgentRunner({ harnessRoot: HARNESS_ROOT }),
   }
 
+  let keepPolling = true
+  const onStop = (): void => {
+    keepPolling = false
+    process.stdout.write('收到停止信号，完成本轮后退出…\n')
+  }
+
   try {
     await client.ensureToken()
 
     if (ticketIds.length > 0) {
-      // Force path: load each id and skip list status whitelist when needed.
       process.stdout.write(
         `强制处理 ${ticketIds.length} 单（绕过选单白名单）：${ticketIds.join(', ')}…\n`,
       )
@@ -167,21 +213,42 @@ async function main(): Promise<void> {
         const outcome = await runOneTicket(config, ticketId)
         process.stdout.write(`ticket ${ticketId}: ${formatOutcome(outcome)}\n`)
       }
-    } else {
-      process.stdout.write(
-        `按白名单选单跑批（最多 ${maxTickets} 单${status === undefined ? '' : `，status=${status}`}）…\n`,
-      )
-      const batchOutcomes = await runBatch(config, {
-        maxTickets,
-        ...(status === undefined ? {} : { status }),
-      })
-      if (batchOutcomes.length === 0) {
-        process.stdout.write('没有可处理的候选单。\n')
-      }
-      for (const outcome of batchOutcomes) {
-        process.stdout.write(`${formatOutcome(outcome)}\n`)
-      }
+      return
     }
+
+    if (pollIntervalSeconds !== undefined) {
+      process.stdout.write(
+        `守护循环启动：每 ${pollIntervalSeconds}s 跑一批（max=${maxTickets}），Ctrl+C 停止。\n`,
+      )
+      process.on('SIGINT', onStop)
+      process.on('SIGTERM', onStop)
+      try {
+        await runPollLoop(pollIntervalSeconds * 1000, {
+          runRound: async () => {
+            const roundStore = loadState(statePath)
+            const roundConfig: OrchestratorConfig = { ...config, stateStore: roundStore }
+            await runWhitelistRound(roundConfig, statePath, maxTickets, status)
+          },
+          sleep,
+          shouldContinue: () => keepPolling,
+          onRoundError: (error) => {
+            const message = error instanceof Error ? error.message : String(error)
+            process.stderr.write(`本轮失败（将继续轮询）: ${message}\n`)
+          },
+          onRoundComplete: () => {
+            process.stdout.write(
+              `本轮结束，${keepPolling ? `${pollIntervalSeconds}s 后下一轮` : '即将退出'}…\n`,
+            )
+          },
+        })
+      } finally {
+        process.off('SIGINT', onStop)
+        process.off('SIGTERM', onStop)
+      }
+      return
+    }
+
+    await runWhitelistRound(config, statePath, maxTickets, status)
   } finally {
     saveState(statePath, stateStore)
   }

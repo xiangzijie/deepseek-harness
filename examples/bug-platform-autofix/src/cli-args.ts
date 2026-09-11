@@ -13,11 +13,18 @@ export interface RunOnceArgs {
   maxTickets: number
   /** Optional comma-separated list status filter for {@link runBatch}. */
   status?: string
+  /**
+   * When set, run whitelist batches in a loop, sleeping this many seconds
+   * between rounds. Incompatible with `--ticket` / `--tickets`.
+   */
+  pollIntervalSeconds?: number
 }
 
 /**
- * Parse `--ticket`, `--tickets`, `--max`, and `--status` from `process.argv`-style args.
- * Force paths (`--ticket` / `--tickets`) are mutually exclusive with `--max`.
+ * Parse `--ticket`, `--tickets`, `--max`, `--status`, and `--poll-interval`
+ * from `process.argv`-style args.
+ * Force paths (`--ticket` / `--tickets`) are mutually exclusive with `--max`
+ * and with `--poll-interval`.
  * @param argv - full argv including node and script path.
  * @returns normalized run-once flags.
  */
@@ -26,6 +33,7 @@ export function parseRunOnceArgs(argv: readonly string[]): RunOnceArgs {
   const ticketsRaw = flagValue(argv, '--tickets')
   const maxRaw = flagValue(argv, '--max')
   const statusRaw = flagValue(argv, '--status')
+  const pollRaw = flagValue(argv, '--poll-interval')
 
   if (ticketRaw !== undefined && ticketsRaw !== undefined) {
     throw new Error('不能同时使用 --ticket 与 --tickets：单用 --ticket <id>，多用 --tickets <id,id,…>')
@@ -52,13 +60,25 @@ export function parseRunOnceArgs(argv: readonly string[]): RunOnceArgs {
   const result: RunOnceArgs = { ticketIds, maxTickets }
   if (statusRaw !== undefined) {
     if (statusRaw.length === 0) {
-      throw new Error('--status 需要非空字符串，例如 --status 待确认,验证未通过')
+      throw new Error('--status 需要非空字符串，例如 --status 待确认,验证未通过,转派,转需求')
     }
     if (ticketIds.length > 0) {
       throw new Error('--status 仅用于白名单跑批，不能与 --ticket/--tickets 同用')
     }
     result.status = statusRaw
   }
+
+  if (pollRaw !== undefined) {
+    if (ticketIds.length > 0) {
+      throw new Error('--poll-interval 仅用于白名单守护循环，不能与 --ticket/--tickets 同用')
+    }
+    result.pollIntervalSeconds = parsePositiveInt(
+      pollRaw,
+      '--poll-interval',
+      '例如 --poll-interval 300（秒）',
+    )
+  }
+
   return result
 }
 

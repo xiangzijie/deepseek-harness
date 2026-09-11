@@ -263,7 +263,7 @@ Followup 写回字段（已验证）：`content`、`attachments`、`status_chang
 
 目标：在一期手动闭环之上，把跑批变成可持续的自动流水，并把接入方式产品化。
 
-- 定时轮询与有限并发
+- **定时轮询与有限并发（部分已落地）**：示例 `run-once --poll-interval <秒>` 提供串行守护循环（默认建议 `--max 1`）；可用 Windows 任务计划周期性拉起一次性 `--max 1` 或保活守护进程。有限跨仓并发仍未做。
 - stats / importance 优先级选单
 - 自动转派后端账号
 - 完整 capability seam + bundle 产品化

@@ -29,7 +29,7 @@ Status: implemented
 
 每次 push 成功后，编排 **ensure** MR（创建或冲突时复用）、写 MR note，并写平台 followup（`处理中`，含 MR／commit／摘要）。同一 `bugfix/<id>` 的再次修复因此仍更新平台处理记录与 MR 讨论，不会仅因「MR 已存在」失败。强制 `--ticket`／`--tickets` 可重跑 `done`／`awaiting_push`／`failed`；仅本地 `claimed`／`fixing` 会拦住。
 
-默认 agent runner 在 `harnessRoot` 下经 tsx 拉起 harness `apps/cli`，cwd 为产品工作区——禁止在产品仓内 `pnpm dsh`。
+默认 agent runner 在 `harnessRoot` 下经 tsx 拉起 harness `apps/cli`，cwd 为产品工作区——禁止在产品仓内 `pnpm dsh`。示例支持 `--poll-interval <秒>` 串行守护轮询（二期第 1 项部分落地）；亦可用 Windows 任务计划周期性拉起 `--max 1`。
 
 ### 上下文不足／非前端时停止
 

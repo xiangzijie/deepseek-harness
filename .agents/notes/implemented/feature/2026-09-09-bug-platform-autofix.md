@@ -29,7 +29,7 @@ The three local roots (`dkh-custom`, `dkh-ailpha`, `dkh-home`) share one GitLab 
 
 After each successful push, orchestration **ensures** the MR (create, or reuse on conflict), adds an MR note, and writes a platform followup (`处理中` with MR / commit / summary; never `现场验证`). A second pass on the same `bugfix/<id>` therefore still updates bug-platform处理记录 and MR discussion instead of failing solely because the MR already exists. Force `--ticket` / `--tickets` may retry `done` / `awaiting_push` / `failed`; only local `claimed` / `fixing` block.
 
-Default agent runner spawns harness `apps/cli` via tsx with product worktree as `cwd` (`harnessRoot` required)—never `pnpm dsh` inside the product tree.
+Default agent runner spawns harness `apps/cli` via tsx with product worktree as `cwd` (`harnessRoot` required)—never `pnpm dsh` inside the product tree. The example supports `--poll-interval <seconds>` for a serial daemon loop (phase-2 item 1, partial); Windows Task Scheduler can also fire one-shot `--max 1` runs.
 
 ### Stop when context is thin or not clearly frontend
 

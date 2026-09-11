@@ -38,10 +38,10 @@ describe('parseRunOnceArgs', () => {
   })
 
   it('parses --status for list filter', () => {
-    expect(parseRunOnceArgs(['node', 'run-once.ts', '--max', '3', '--status', '待确�?验证未通过'])).toEqual({
+    expect(parseRunOnceArgs(['node', 'run-once.ts', '--max', '3', '--status', '待确认,验证未通过'])).toEqual({
       ticketIds: [],
       maxTickets: 3,
-      status: '待确�?验证未通过',
+      status: '待确认,验证未通过',
     })
   })
 
@@ -64,10 +64,26 @@ describe('parseRunOnceArgs', () => {
   it('rejects --ticket together with --tickets', () => {
     expect(() =>
       parseRunOnceArgs(['node', 'run-once.ts', '--ticket', '1', '--tickets', '2,3']),
-    ).toThrow(/不能同时使用 --ticket �?--tickets/)
+    ).toThrow(/不能同时使用 --ticket 与 --tickets/)
   })
 
-  it('rejects empty --tickets', () => {
-    expect(() => parseRunOnceArgs(['node', 'run-once.ts', '--tickets', ''])).toThrow(/--tickets/)
+  it('parses --poll-interval seconds for daemon mode', () => {
+    expect(parseRunOnceArgs(['node', 'run-once.ts', '--poll-interval', '300', '--max', '1'])).toEqual({
+      ticketIds: [],
+      maxTickets: 1,
+      pollIntervalSeconds: 300,
+    })
+  })
+
+  it('rejects --poll-interval with --ticket', () => {
+    expect(() =>
+      parseRunOnceArgs(['node', 'run-once.ts', '--poll-interval', '60', '--ticket', '428']),
+    ).toThrow(/--poll-interval/)
+  })
+
+  it('rejects non-positive --poll-interval', () => {
+    expect(() => parseRunOnceArgs(['node', 'run-once.ts', '--poll-interval', '0'])).toThrow(
+      /--poll-interval/,
+    )
   })
 })

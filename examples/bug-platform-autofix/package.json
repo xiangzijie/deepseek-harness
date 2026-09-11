@@ -3,5 +3,5 @@
   "private": true,
   "version": "0.0.1",
   "type": "module",
-  "description": "Manual one-shot runner for internal bug-platform autofix (library entry, no cordis.yml)"
+  "description": "One-shot / poll runner for internal bug-platform autofix (library entry, no cordis.yml)"
 }

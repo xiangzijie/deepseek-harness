@@ -1,76 +1,92 @@
-# bug-platform-autofix 鎵嬪姩璺戞壒
+# bug-platform-autofix 手动跑批 / 守护轮询
 
-绗竴鏈熺ず渚嬶細鐩存帴璋冪敤 `@deepseek-ai/dsh-bug-platform-http` 涓?`@deepseek-ai/dsh-bug-platform-autofix` 搴擄紝**涓嶉渶瑕?* `cordis.yml`銆?
+第一期示例：直接调用 `@deepseek-ai/dsh-bug-platform-http` 与 `@deepseek-ai/dsh-bug-platform-autofix` 库，**不需要** `cordis.yml`。
 
-## 鐜鍙橀噺
+## 环境变量
 
-鍦ㄤ粨搴撴牴鐩綍鐨?shell 涓缃紙**鍕垮啓鍏ヤ粨搴撱€佸嬁鎻愪氦瀵嗛挜**锛夛細
+在仓库根目录的 shell 中设置（**勿写入仓库、勿提交密钥**）：
 
-| 鍙橀噺 | 蹇呭～ | 璇存槑 |
+| 变量 | 必填 | 说明 |
 |------|------|------|
-| `BUG_PLATFORM_USERNAME` | 鏄?| Bug 骞冲彴鐧诲綍鐢ㄦ埛鍚?|
-| `BUG_PLATFORM_PASSWORD` | 鏄?| Bug 骞冲彴鐧诲綍瀵嗙爜 |
-| `DEEPSEEK_API_KEY` | 鏄?| headless agent 璋冩ā鍨?|
-| `BUG_PLATFORM_BASE_URL` | 鍚?| 榛樿 `http://10.20.183.62:8080` |
-| `GITLAB_TOKEN` | 鍚?| GitLab `PRIVATE-TOKEN`锛涙棤 Token 鏃朵粛鍙湰鍦?commit锛屼絾涓嶄細寮€ MR / 涓嶄細鏍囥€岀幇鍦洪獙璇併€?|
+| `BUG_PLATFORM_USERNAME` | 是 | Bug 平台登录用户名 |
+| `BUG_PLATFORM_PASSWORD` | 是 | Bug 平台登录密码 |
+| `DEEPSEEK_API_KEY` | 是 | headless agent 调模型 |
+| `BUG_PLATFORM_BASE_URL` | 否 | 默认 `http://10.20.183.62:8080` |
+| `GITLAB_TOKEN` | 否 | GitLab `PRIVATE-TOKEN`；无 Token 时仍可本地 commit，但不会开 MR |
 
-鍙€夎鐩栬矾寰勶細`BUG_PLATFORM_MAPPING_FILE`銆乣BUG_PLATFORM_STATE_FILE`銆乣BUG_PLATFORM_ASSETS_DIR`銆?
+可选覆盖路径：`BUG_PLATFORM_MAPPING_FILE`、`BUG_PLATFORM_STATE_FILE`、`BUG_PLATFORM_ASSETS_DIR`。
 
-### Windows锛氫粠鐢ㄦ埛鐜璇诲彇 `GITLAB_TOKEN`
+### Windows：从用户环境读取 `GITLAB_TOKEN`
 
-鑻?Token 鍐欏湪銆岀敤鎴枫€嶇幆澧冨彉閲忛噷锛屽綋鍓?PowerShell 鍙兘灏氭湭缁ф壙锛屽彲鍏堝悓姝ュ埌杩涚▼锛?
+若 Token 写在「用户」环境变量里，当前 PowerShell 可能尚未继承，可先同步到进程：
 
 ```powershell
 $env:GITLAB_TOKEN = [System.Environment]::GetEnvironmentVariable('GITLAB_TOKEN', 'User')
-$env:BUG_PLATFORM_USERNAME = '鈥?
-$env:BUG_PLATFORM_PASSWORD = '鈥?
-$env:DEEPSEEK_API_KEY = '鈥?
+$env:BUG_PLATFORM_USERNAME = '…'
+$env:BUG_PLATFORM_PASSWORD = '…'
+$env:DEEPSEEK_API_KEY = '…'
 ```
 
-鏈剼鏈彧璇?`process.env`锛屼笉浼氬幓璇绘敞鍐岃〃锛涜纭繚鍚姩鍓嶇幆澧冨彉閲忓凡杩涘叆杩涚▼銆?
+本脚本只读 `process.env`，不会去读注册表；请确保启动前环境变量已进入进程。
 
-## 榛樿璺緞锛堟湰鏈猴級
+## 默认路径（本机）
 
-| 鐢ㄩ€?| 榛樿 |
+| 用途 | 默认 |
 |------|------|
-| 鑿滃崟鏄犲皠 | `D:/CODE/COMPANY/dkh-bugFix-project/menu-mapping.json` |
+| 菜单映射 | `D:/CODE/COMPANY/dkh-bugFix-project/menu-mapping.json` |
 | custom / ailpha / home | `D:/CODE/COMPANY/dkh-bugFix-project/dkh-{custom,ailpha,home}` |
-| 骞傜瓑鐘舵€?| `D:/CODE/COMPANY/dkh-bugFix-project/.dsh-bugfix/state.json` |
-| 鎴浘闄勪欢 | `D:/CODE/COMPANY/dkh-bugFix-project/.dsh-bugfix/<ticketId>/` |
+| 幂等状态 | `D:/CODE/COMPANY/dkh-bugFix-project/.dsh-bugfix/state.json` |
+| 截图附件 | `D:/CODE/COMPANY/dkh-bugFix-project/.dsh-bugfix/<ticketId>/` |
 
-GitLab锛歚http://gitlab.info.dbappsecurity.com.cn`锛岄」鐩?id `8325`銆?
+GitLab：`http://gitlab.info.dbappsecurity.com.cn`，项目 id `8325`。
 
-## 鎬庝箞璺?
+## 怎么跑
 
-鍓嶇疆锛氭湰 worktree 闇€瑕佸厛鏈変竴娆?`pnpm run build`锛堟垨鑷冲皯 `pnpm run build:lib`锛夈€俬eadless 鐨?typert-loader 浠庡悇鍖?`exports["./typert"]` 鍔犺浇 **宸叉瀯寤虹殑** `lib/typert.host.js`锛涘叏鏂?worktree 娌℃湁杩欎簺鏂囦欢鏃朵細鎶?`Cannot find module .../lib/typert.host.js`銆?
+前置：本 worktree 需要先有一次 `pnpm run build`（或至少 `pnpm run build:lib`）。headless 的 typert-loader 从各包 `exports["./typert"]` 加载 **已构建的** `lib/typert.host.js`。
 
-鍦?**deepseek-harness 浠撳簱鏍?*锛堟湰 worktree 鏍癸級鎵ц銆侫gent 浼氫粠鏈?harness 鍚姩 `apps/cli`锛坄dsh --profile headless`锛夛紝骞舵妸 **cwd 璁句负鏄犲皠鍒扮殑浜у搧宸ヤ綔鍖?*锛涗笉瑕佸湪 `dkh-custom` / `dkh-ailpha` 閲屾壘 `dsh`銆?
+在 **deepseek-harness 仓库根**（本 worktree 根）执行。Agent 会从本 harness 启动 `apps/cli`（`dsh --profile headless`），并把 **cwd 设为映射到的产品工作区**；不要在 `dkh-custom` / `dkh-ailpha` 里找 `dsh`。
 
-Windows 涓婅嫢 `pnpm run` 鍥?lefthook postinstall 閿佸け璐ワ細鍒犳帀浠撳簱 `.git/dsh-lefthook-install.lock` 鍚庨噸璇曪紝鎴栫敤涓嬮潰鐨?`node` 鍏ュ彛锛堜粛闇€鍏?build锛夛細
+Windows 上若 `pnpm run` 因 lefthook postinstall 锁失败：删掉仓库 `.git/dsh-lefthook-install.lock` 后重试，或用下面的 `node` 入口（仍需先 build）：
 
 ```sh
-# 棣栨 / 缂?lib 鏃?
+# 首次 / 缺 lib 时
 pnpm run build:lib
 
-# 寮哄埗鍗曞彿锛堢粫杩囩姸鎬佺櫧鍚嶅崟锛?
+# 强制单号（绕过状态白名单）
 node --import tsx/esm examples/bug-platform-autofix/src/run-once.ts --ticket 428
 
-# 涓€鏉″懡浠ゅ己鍒跺涓寚瀹氬崟锛堥€楀彿鍒嗛殧锛屼覆琛屾墽琛岋級
+# 一条命令强制多个指定单（逗号分隔，串行执行）
 node --import tsx/esm examples/bug-platform-autofix/src/run-once.ts --tickets 428,430,441
 
-# 璺戞壒锛氫竴娆℃渶澶?N 鍗曪紙榛樿鐘舵€佺櫧鍚嶅崟锛氬緟纭,楠岃瘉鏈€氳繃锛涙湭鎸囨淳锛涙湁鏄犲皠锛?
-node --import tsx/esm examples/bug-platform-autofix/src/run-once.ts --max 5
+# 跑批：一次最多 N 单（默认状态：待确认,验证未通过,转派,转需求；未指派；有映射）
+node --import tsx/esm examples/bug-platform-autofix/src/run-once.ts --max 1
 
-# 鍙€夛細瑕嗙洊鍒楄〃 status 杩囨护锛堥€楀彿鍒嗛殧锛屼紶缁欏钩鍙?list锛?
-node --import tsx/esm examples/bug-platform-autofix/src/run-once.ts --max 3 --status 寰呯‘璁?楠岃瘉鏈€氳繃
-
-# 鎴栵紙渚濊禆妫€鏌ラ€氳繃鏃讹級
-pnpm run bugfix:once -- --tickets 428,430,441
+# 可选：覆盖列表 status 过滤
+node --import tsx/esm examples/bug-platform-autofix/src/run-once.ts --max 3 --status 待确认,验证未通过,转派,转需求
 ```
 
-`--ticket` / `--tickets` 璧板己鍒惰矾寰勶紙缁曡繃鍒楄〃**鐘舵€?*鐧藉悕鍗曪級锛屼粛浼氭帓闄?`缃戠粶瀹夊叏鏁版嵁澶у睆`銆乭ome銆佹棤鏄犲皠锛?*涓嶈兘**涓?`--max` / `--status` 鍚岀敤锛沗--ticket` 涓?`--tickets` 涔熶簰鏂ャ€傛湰鍦?`state.json` 涓粛澶勪簬杩涜涓?phase 鐨勫崟浼氳烦杩囥€俙--max` 鍙奖鍝嶇櫧鍚嶅崟璺戞壒锛涘€欓€変粛鍙楁槧灏?/ 鏈寚娲?/ 鎺掗櫎鑿滃崟 / 鏈湴骞傜瓑绾︽潫锛屽疄闄呭鐞嗘暟鍙兘灏戜簬 N銆?
+### 自动流水（守护轮询）
 
-## 瀹夊叏
+加 `--poll-interval <秒>`：白名单跑批循环执行，每轮结束后休眠；Ctrl+C / SIGTERM 完成本轮后退出。每轮失败会打日志并继续下一轮。默认串行（建议 `--max 1`）。
 
-- 鍑瘉鍙潵鑷幆澧冨彉閲忥紱README / 浠ｇ爜 / 鏃ュ織涓嶅緱鍑虹幇鏄庢枃瀵嗙爜鎴?Token銆?
-- 鍕挎妸 `.env`銆佸惈瀵嗛挜鐨勮剼鏈垨 state 閲岀殑鏁忔劅鍐呭鎻愪氦杩?git銆?
+```powershell
+# 示例：每 5 分钟尝试修 1 单（保持窗口开着，或挂任务计划）
+node --import tsx/esm examples/bug-platform-autofix/src/run-once.ts --max 1 --poll-interval 300
+```
+
+**Windows 任务计划（推荐运维）**
+
+1. 新建「基本任务」→ 触发器按需（如每 10 分钟，或开机后重复）。
+2. 操作：启动程序
+   - 程序：`node`（或 `node.exe` 全路径）
+   - 参数：`--import tsx/esm examples/bug-platform-autofix/src/run-once.ts --max 1`
+   - 起始于：本 worktree 根目录（含 `examples/` 的路径）。
+3. 在任务「常规」勾选「不管用户是否登录都要运行」时，请在任务里配置环境变量，或改用包装 `.ps1` 先 `$env:…=` 再调用 `node`。
+4. 守护模式也可用任务「开机启动一次」+ `--poll-interval`；不要同时开多个守护进程抢同一 `state.json`／产品工作区。
+
+`--ticket` / `--tickets` 走强制路径（绕过列表**状态**白名单），仍会排除 `网络安全数据大屏`／`网络安全指挥大屏`、home、无映射；**不能**与 `--max` / `--status` / `--poll-interval` 同用；`--ticket` 与 `--tickets` 也互斥。本地 `state.json` 中仍处于进行中 phase 的单会跳过。`--max` 只影响白名单跑批。
+
+## 安全
+
+- 凭证只来自环境变量；README / 代码 / 日志不得出现明文密码或 Token。
+- 勿把 `.env`、含密钥的脚本或 state 里的敏感内容提交进 git。
