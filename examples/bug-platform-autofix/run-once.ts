@@ -1,10 +1,11 @@
 /**
- * Manual one-shot / force-ticket entry for bug-platform autofix (phase 1).
+ * Manual one-shot / force-ticket / batch entry for bug-platform autofix (phase 1).
  * Library-only: no cordis.yml; constructs clients and calls `runOneTicket` / `runBatch`.
  */
 
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import {
   BugPlatformClient,
   DEFAULT_BASE_URL,
@@ -19,6 +20,30 @@ import {
   type OrchestratorConfig,
   type TicketOutcome,
 } from '@deepseek-ai/dsh-bug-platform-autofix'
+import { parseRunOnceArgs } from './cli-args.ts'
+
+/** deepseek-harness worktree root (parent of `examples/`). */
+const HARNESS_ROOT = fileURLToPath(new URL('../..', import.meta.url))
+
+/**
+ * headless typert-loader loads package `exports["./typert"]` → `lib/typert.host.js`.
+ * Fail before claiming a ticket when this worktree has not been built.
+ */
+function assertHarnessBuilt(harnessRoot: string): void {
+  const probes = [
+    join(harnessRoot, 'packages/goal/goal/lib/typert.host.js'),
+    join(harnessRoot, 'packages/interaction/commands/lib/typert.host.js'),
+  ]
+  const missing = probes.filter(path => !existsSync(path))
+  if (missing.length === 0) return
+  throw new Error(
+    [
+      'harness 未构建：headless 需要各包 lib/typert.host.js（typert-loader 走 artifact 面）。',
+      '请在本 worktree 根执行：pnpm run build:lib',
+      `缺少: ${missing.join(', ')}`,
+    ].join('\n'),
+  )
+}
 
 /** Local product worktrees + mapping/state home (operator machine defaults). */
 const PROJECT_ROOT = 'D:/CODE/COMPANY/dkh-bugFix-project'
@@ -42,24 +67,6 @@ const PRODUCT_BRANCHES = {
 
 const GITLAB_HOST = 'http://gitlab.info.dbappsecurity.com.cn'
 const GITLAB_PROJECT_ID = 8325
-
-/**
- * @param argv - `process.argv` (or a test slice).
- * @returns forced ticket id when `--ticket <id>` is present.
- */
-function parseTicketArg(argv: readonly string[]): number | undefined {
-  const index = argv.indexOf('--ticket')
-  if (index === -1) return undefined
-  const raw = argv[index + 1]
-  if (raw === undefined || raw.startsWith('-')) {
-    throw new Error('--ticket 需要一个数字 id，例如 --ticket 428')
-  }
-  const id = Number(raw)
-  if (!Number.isInteger(id) || id <= 0) {
-    throw new Error(`--ticket 必须是正整数，收到: ${raw}`)
-  }
-  return id
-}
 
 /**
  * @param name - required environment variable name.
@@ -95,7 +102,9 @@ function formatOutcome(outcome: TicketOutcome): string {
 }
 
 async function main(): Promise<void> {
-  const ticketId = parseTicketArg(process.argv)
+  assertHarnessBuilt(HARNESS_ROOT)
+
+  const { ticketIds, maxTickets, status } = parseRunOnceArgs(process.argv)
 
   const username = requireEnv('BUG_PLATFORM_USERNAME')
   const password = requireEnv('BUG_PLATFORM_PASSWORD')
@@ -133,34 +142,45 @@ async function main(): Promise<void> {
     assetsDir,
     lintEnabled: false,
     buildEnabled: false,
-    agentRunner: createDefaultAgentRunner(),
+    // Spawn harness `apps/cli` with product worktree as cwd — never `pnpm dsh` inside dkh-*.
+    agentRunner: createDefaultAgentRunner({ harnessRoot: HARNESS_ROOT }),
   }
 
   try {
     await client.ensureToken()
 
-    let outcomes: TicketOutcome[]
-    if (ticketId !== undefined) {
-      // Force path: load detail by id and skip list status whitelist (e.g. 428 转派).
-      if (stateStore.isActiveTicket(ticketId)) {
+    if (ticketIds.length > 0) {
+      // Force path: load each id and skip list status whitelist (e.g. 428 转派).
+      process.stdout.write(
+        `强制处理 ${ticketIds.length} 单（绕过选单白名单）：${ticketIds.join(', ')}…\n`,
+      )
+      for (const ticketId of ticketIds) {
         const record = stateStore.get(ticketId)
-        process.stdout.write(
-          `跳过 ticket ${ticketId}：本地 phase=${record?.phase} 仍在进行中（见 ${statePath}）\n`,
-        )
-        return
+        // Force path may retry `awaiting_push` / `done` / `failed` (e.g. second
+        // fix pass). Only block in-flight claim/fix phases.
+        if (record?.phase === 'claimed' || record?.phase === 'fixing') {
+          process.stdout.write(
+            `ticket ${ticketId}: 跳过（本地 phase=${record.phase} 仍在进行中，见 ${statePath}）\n`,
+          )
+          continue
+        }
+        const outcome = await runOneTicket(config, ticketId)
+        process.stdout.write(`ticket ${ticketId}: ${formatOutcome(outcome)}\n`)
       }
-      process.stdout.write(`强制处理 ticket ${ticketId}（绕过选单白名单）…\n`)
-      outcomes = [await runOneTicket(config, ticketId)]
     } else {
-      process.stdout.write('按白名单选单跑批（默认最多 1 单）…\n')
-      outcomes = await runBatch(config, { maxTickets: 1 })
-      if (outcomes.length === 0) {
+      process.stdout.write(
+        `按白名单选单跑批（最多 ${maxTickets} 单${status === undefined ? '' : `，status=${status}`}）…\n`,
+      )
+      const batchOutcomes = await runBatch(config, {
+        maxTickets,
+        ...(status === undefined ? {} : { status }),
+      })
+      if (batchOutcomes.length === 0) {
         process.stdout.write('没有可处理的候选单。\n')
       }
-    }
-
-    for (const outcome of outcomes) {
-      process.stdout.write(`${formatOutcome(outcome)}\n`)
+      for (const outcome of batchOutcomes) {
+        process.stdout.write(`${formatOutcome(outcome)}\n`)
+      }
     }
   } finally {
     saveState(statePath, stateStore)

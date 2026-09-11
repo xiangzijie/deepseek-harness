@@ -42,20 +42,33 @@ GitLab：`http://gitlab.info.dbappsecurity.com.cn`，项目 id `8325`。
 
 ## 怎么跑
 
-在 **deepseek-harness 仓库根**（本 worktree 根）执行：
+前置：本 worktree 需要先有一次 `pnpm run build`（或至少 `pnpm run build:lib`）。headless 的 typert-loader 从各包 `exports["./typert"]` 加载 **已构建的** `lib/typert.host.js`；全新 worktree 没有这些文件时会报 `Cannot find module .../lib/typert.host.js`。
+
+在 **deepseek-harness 仓库根**（本 worktree 根）执行。Agent 会从本 harness 启动 `apps/cli`（`dsh --profile headless`），并把 **cwd 设为映射到的产品工作区**；不要在 `dkh-custom` / `dkh-ailpha` 里找 `dsh`。
+
+Windows 上若 `pnpm run` 因 lefthook postinstall 锁失败：删掉仓库 `.git/dsh-lefthook-install.lock` 后重试，或用下面的 `node` 入口（仍需先 build）：
 
 ```sh
-# 试点单 428（状态为「转派」，不在默认选单白名单，必须强制）
-pnpm run bugfix:once -- --ticket 428
+# 首次 / 缺 lib 时
+pnpm run build:lib
 
-# 等价
+# 强制单号（绕过状态白名单）
 node --import tsx/esm examples/bug-platform-autofix/run-once.ts --ticket 428
 
-# 不传 --ticket：按平台列表过滤未指派 + 白名单状态，默认最多 1 单
-pnpm run bugfix:once
+# 一条命令强制多个指定单（逗号分隔，串行执行）
+node --import tsx/esm examples/bug-platform-autofix/run-once.ts --tickets 428,430,441
+
+# 跑批：一次最多 N 单（默认状态白名单：待确认,验证未通过；未指派；有映射）
+node --import tsx/esm examples/bug-platform-autofix/run-once.ts --max 5
+
+# 可选：覆盖列表 status 过滤（逗号分隔，传给平台 list）
+node --import tsx/esm examples/bug-platform-autofix/run-once.ts --max 3 --status 待确认,验证未通过
+
+# 或（依赖检查通过时）
+pnpm run bugfix:once -- --tickets 428,430,441
 ```
 
-`--ticket <id>` 会 `GET` 详情后直接走 `runOneTicket`，绕过列表状态白名单。若本地 `state.json` 里该单仍处于进行中 phase，会跳过以避免重复领单。
+`--ticket` / `--tickets` 走强制路径（绕过列表**状态**白名单），仍会排除 `网络安全数据大屏`、home、无映射；**不能**与 `--max` / `--status` 同用；`--ticket` 与 `--tickets` 也互斥。本地 `state.json` 中仍处于进行中 phase 的单会跳过。`--max` 只影响白名单跑批；候选仍受映射 / 未指派 / 排除菜单 / 本地幂等约束，实际处理数可能少于 N。
 
 ## 安全
 
