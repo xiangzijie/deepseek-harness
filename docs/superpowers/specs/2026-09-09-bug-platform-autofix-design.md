@@ -2,7 +2,7 @@
 
 日期：2026-09-09
 
-状态：待实现（方案 3：混合接入 deepseek-harness）
+状态：已实现／试点中（方案 3：混合接入 deepseek-harness）
 
 范围：尽快跑通「手动跑批 → 领未指派单 → 本地改代码 → 尽量自动 Git → 回写平台」
 
@@ -18,7 +18,7 @@
 ### 1.2 非目标（第一期不做）
 
 - 定时轮询、多并发 worktree。
-- 自动合入 MR。
+- **默认自动合入 MR**（合入策略见 §3.11：一期只开 MR，人工合；高确信度自动合留待后续且须审计记录）。
 - 自动转派后端处理人。
 - 修改 `dkh-home`（左侧菜单 / home 包默认不在范围内）。
 - 截图视觉回归门禁（截图仅作模型输入）。
@@ -149,7 +149,7 @@ Followup 写回字段（已验证）：`content`、`attachments`、`status_chang
 - 目标仅为映射得到的那一个 `localRoot`；**不得**切换到其它两个本地目录去改本单。
 - 开跑前断言：当前分支为本目录绑定的 jinan，或已是本单的 `bugfix/<ticket_id>`。若当前在其它产品 jinan（例如在 ailpha 目录上却是 `dkh-custom-jinan`）→ **中止并回写**，禁止自动 checkout「纠正」。
 - `git status` 干净；dirty 则失败并说明。
-- 仅在本目录内，从**当前绑定 jinan 的 HEAD** 创建 `bugfix/<ticket_id>`。MR 目标为**同一产品 jinan**（同一 GitLab 项目内的对应分支）。
+- 仅在本目录内，从**该目录绑定的产品 jinan** 创建 `bugfix/<ticket_id>`（若当前停在其它 `bugfix/*` 上，须先 checkout 回 jinan 再 `checkout -b`，禁止叠前序单提交）；MR 目标为**同一产品 jinan**（同一 GitLab 项目内的对应分支）。
 - 不得在本目录检出另一条产品 jinan 来改文件。
 - 状态：`phase=fixing`。
 
@@ -164,17 +164,29 @@ Followup 写回字段（已验证）：`content`、`attachments`、`status_chang
 - **第一期默认不执行门禁**：`lint` 与全量 `build` 均 **默认关闭**；Agent 改完有 diff 即可进入 Git 尝试路径（仍要求存在变更，无 diff 则失败回写）。
 - 预留配置：`lintEnabled`（默认 `false`）、`buildEnabled`（默认 `false`）。
 - 当将来打开 `lintEnabled` 时：
-  - 命令为 `pnpm run lint`，且**只传入本单变更文件**（如 `pnpm run lint -- <files...>`），禁止无参数全仓 lint。
+  - **禁止**依赖三仓现有 `pnpm run lint`：custom / ailpha / home 的脚本均为 `eslint --ext .js,.vue src --fix`，路径写死为 `src`；`pnpm run lint -- <file>` 语法上可接受，但**仍会 lint 整个 `src`**，达不到「只 lint 变更文件」。
+  - 正确做法：在目标 `localRoot` 内直接调用本地 `eslint`（或 `pnpm exec eslint`），显式传入本单变更文件列表，例如 `pnpm exec eslint --ext .js,.vue --fix -- <changed files...>`；禁止无文件参数的全仓 lint。
   - 无变更文件则失败；lint 失败则不进入 Git 成功路径，followup 保持 `处理中` 并写明文件与摘要。
 - `buildEnabled=true` 时才跑全仓 build（成本高，第一期不启用）。
 
 ### 3.10 Git 与结果回写
 
-- **尝试**：在**同一目标目录**内 commit → push `bugfix/<id>` → 向**该目录绑定的 jinan** 开 MR（同一 `bigdata-web-frontend` 项目内；custom 单目标 `dkh-custom-jinan`，不得打到 `dkh-ailpha-jinan`）。
-- **MR 成功**：followup `status_change=现场验证`，content 含 MR URL 与摘要；`phase=done`，记录 `mrUrl`。
-- **无 Token / push 或 MR 失败**：确保本地 commit 存在；followup 保持 `处理中`（或 `status_change=处理中`），写分支名、commit、待人工推送；`phase=awaiting_push`。**禁止**标「现场验证」。
+- **尝试**：在**同一目标目录**内 commit → push `bugfix/<id>` → 向**该目录绑定的 jinan** **ensure** MR（同一 `bigdata-web-frontend` 项目内；custom 单目标 `dkh-custom-jinan`，不得打到 `dkh-ailpha-jinan`）：首次创建；若源分支已有 MR（冲突）则复用已有 MR，不因二次修单失败。
+- **每次 push 成功**：向该 MR 追加 discussion note（含 commit 与摘要）；平台 followup `status_change=现场验证`，content 含 MR URL、commit、摘要（首次与再次提交均写独立跟进）；`phase=done`，记录 `mrUrl`。
+- **无 Token / push 或 ensure MR 失败**：确保本地 commit 存在；followup 保持 `处理中`（或 `status_change=处理中`），写分支名、commit、待人工推送；`phase=awaiting_push`。**禁止**标「现场验证」。
 - **修失败 / 偏后端**：followup 保持 `处理中` + 原因；不开假 MR；`phase=failed`。
 - 本批若 `maxTickets>1`，回到列表循环处理下一候选；第一期默认处理完 1 单成功或 1 单失败尝试后结束亦可配置。
+- **强制 `--tickets`**：可重跑 `done`／`awaiting_push`／`failed`；仅跳过本地仍为 `claimed`／`fixing` 的单。
+
+### 3.11 合入策略（产品约定）
+
+默认模式：**自动修 + 人工合**。开 MR 并回写 `现场验证` 后，由人审 diff／合入 jinan；编排**不得**默认调用 GitLab merge。
+
+例外（后续分期可实现，一期不启用）：仅当修复后判定为**百分之百无问题**时，才允许自动合入该 MR。启用时必须同时满足：
+
+- 有显式、可配置的「允许自动合」判定（白名单菜单／问题类型、门禁通过、变更面上限等）；不确定则一律人工合。
+- 自动合入前后在 bug 平台 followup（及可选 MR note）写明：**自动合入**、判定依据、所用规则／门禁结果、操作者（机器人账号）、时间、MR／commit。本地状态可记 `mergedBy=auto` 与依据摘要，便于审计与回滚。
+- 自动合失败则保持 MR 打开并 followup 说明，回退为人工合；不得静默跳过记录。
 
 ## 4. 上下文与映射
 
@@ -243,18 +255,38 @@ Followup 写回字段（已验证）：`content`、`attachments`、`status_chang
 4. GitLab 可用时开出 MR 并回写 `现场验证`；不可用时保持 `处理中` 且说明待推送。
 5. 凭证仅来自环境变量；仓库中无密钥。
 
-## 9. 后续（二期意向）
+## 9. 后续分期
+
+### 9.1 二期（运维与产品化）
+
+目标：在一期手动闭环之上，把跑批变成可持续的自动流水，并把接入方式产品化。
 
 - 定时轮询与有限并发
-- stats / importance 优先级
+- stats / importance 优先级选单
 - 自动转派后端账号
 - 完整 capability seam + bundle 产品化
 - home 若确需改，再显式纳入映射与范围
 - 视觉或预览环境验收（可选）
+- **高确信度自动合 MR**（默认仍人工合；仅 §3.11 例外路径）：自动合时必须在平台处理记录中留下判定依据与审计字段
+- （可选、非主路径）极简本地 `lessons` 追加：成功修单后按 `target_menu` 记一条短笔记，下次 brief 注入 ≤N 条——仅当业务急需提前试用时启用；正位仍见 §9.2
+
+### 9.2 三期（经验沉淀）
+
+目标：沉淀「某菜单常改哪、某类接口怎么修」等跨单经验，提升修复命中率。不自建 DSH 一等 memory capability；优先本地结构化经验库（建议落在 `dkh-bugFix-project` 或产品仓 `.agents/`），必要时再接第三方 MCP memory。
+
+**流程（已约定）**
+
+1. AI 修单成功（已开／复用 MR、回写 `现场验证`）后，系统根据 diff 与摘要**自动起草**一条短经验（症状、菜单、改法、关键路径、反例），状态为「待确认」。草稿默认挂在修单成功，**不依赖**人工是否已合入 MR。
+2. **通用型闸门**（规则与／或模型）：跨页共用组件／枚举／请求约定、同类菜单或问题类型可复用者进入待确认队列；一次性文案、纯后端／数据、单页特例 → 不入库（可丢弃或标「不入库」）。
+3. **人工**只处理待确认队列（抽查，非每单必做）：通过／改一句后入库，或拒绝。日常仍以人工合 MR 为主；合入本身不等于经验入库。发现误导性已入库条目时作废／删除。
+4. 下次领单：按 `target_menu`／问题类型检索已入库经验 ≤N 条，注入 Agent brief。
+5. 与 `menu-mapping.json` 分工：映射管「落到哪仓哪文件」；经验管「这类单通常怎么改」。审计字段含来源 ticket、MR、时间。
+
+一期／二期默认**不实现**；二期仅在业务急需时可启用 §9.1 极简 `lessons` 旁路，正位仍以本节为准。
 
 ## 10. 待用户补充（不阻塞骨架）
 
 - [x] 菜单映射：已采用 `D:\CODE\COMPANY\dkh-bugFix-project\menu-mapping.json`（见 §4.2）
 - [x] GitLab Token / 项目 / 分支：已验证可用（user=`zijie.xiang`，项目 `jgts/bigdata-web-frontend` id=8325；`dkh-custom-jinan` / `dkh-ailpha-jinan` / `dkh-home-jinan` 均可读）
 - [x] 三仓本地 `HEAD`：已确认分别在 `dkh-custom-jinan` / `dkh-ailpha-jinan` / `dkh-home-jinan`（工作区 clean）
-- [ ] 抽查各仓 `pnpm run lint -- <file>` 是否接受路径参数（**启用 lint 前**再做；第一期默认关闭）
+- [x] 抽查各仓 lint 脚本（2026-09-10）：三仓均为 `eslint --ext .js,.vue src --fix`；`pnpm run lint -- <file>` **不能**只 lint 单文件。启用 `lintEnabled` 时须直接 `eslint`/`pnpm exec eslint` 传变更文件（见 §3.9）；第一期默认仍关闭
