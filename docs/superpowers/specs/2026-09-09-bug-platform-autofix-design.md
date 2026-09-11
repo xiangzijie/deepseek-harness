@@ -156,8 +156,9 @@ Followup 写回字段（已验证）：`content`、`attachments`、`status_chang
 ### 3.8 调用 Agent
 
 - 启动 dsh headless（或等价编排）：工作目录=目标仓；注入 §4.1 brief（含本地截图路径、`routesFile`、`filePath`/`routeHint`）。
-- 约束提示：优先在映射路径与路由指向的模块内修改；像纯后端/纯数据问题则停止改代码并返回可解析的失败原因。
-- Agent 异常退出、超时、无有效 diff：进入失败回写（3.10 失败支路），不开 MR。
+- 优先在映射路径与路由指向的模块内修改。
+- **停止／跳过（非「猜改」）**：上下文不足，或无法确定为前端问题（更像接口／数据／权限／配置／纯后端）时，禁止改码。Agent 摘要须含一行 `SKIP_AUTOFIX|<类别>|<原因>`（类别：`insufficient_context`｜`not_frontend`｜`out_of_scope`）；编排解析后写平台跟进（含类别与原因），状态保持 `处理中`，本地 `phase=failed`。
+- **预检**：领单并下载附件后、创建 `bugfix/*`／调 agent 前，若描述过短（阈值见实现）且无可用截图，直接停止并回写 `insufficient_context`，不拉 agent。
 
 ### 3.9 门禁
 
@@ -174,7 +175,7 @@ Followup 写回字段（已验证）：`content`、`attachments`、`status_chang
 - **尝试**：在**同一目标目录**内 commit → push `bugfix/<id>` → 向**该目录绑定的 jinan** **ensure** MR（同一 `bigdata-web-frontend` 项目内；custom 单目标 `dkh-custom-jinan`，不得打到 `dkh-ailpha-jinan`）：首次创建；若源分支已有 MR（冲突）则复用已有 MR，不因二次修单失败。
 - **每次 push 成功**：向该 MR 追加 discussion note（含 commit 与摘要）；平台 followup `status_change=处理中`，content 含 MR URL、commit、摘要（首次与再次提交均写独立跟进；**不**改为「现场验证」）；`phase=done`，记录 `mrUrl`。
 - **无 Token / push 或 ensure MR 失败**：确保本地 commit 存在；followup 保持 `处理中`（或 `status_change=处理中`），写分支名、commit、待人工推送；`phase=awaiting_push`。**禁止**标「现场验证」。
-- **修失败 / 偏后端**：followup 保持 `处理中` + 原因；不开假 MR；`phase=failed`。
+- **修失败 / 偏后端 / `SKIP_AUTOFIX` 停止**：followup 保持 `处理中` + 原因（停止类跟进含类别）；不开假 MR；`phase=failed`。
 - 本批若 `maxTickets>1`，回到列表循环处理下一候选；第一期默认处理完 1 单成功或 1 单失败尝试后结束亦可配置。
 - **强制 `--tickets`**：可重跑 `done`／`awaiting_push`／`failed`；仅跳过本地仍为 `claimed`／`fixing` 的单。
 
@@ -222,7 +223,7 @@ Followup 写回字段（已验证）：`content`、`attachments`、`status_chang
 | 领单开始 | `处理中` | `null`（不改指派） | 自动修复开始 |
 | MR 成功 | `处理中` | `null` | MR 链接 + 摘要；请人工审阅合入（不改为现场验证） |
 | 本地已修好但 Git 失败 | `处理中`（或 `status_change` 为空且当前已是处理中） | `null` | 分支名、commit、待人工推送；禁止标现场验证 |
-| 修失败 / 像后端问题 | 保持处理中 | `null` | 失败原因；第一期不转派 |
+| 修失败 / `SKIP_AUTOFIX` 停止 / 像后端问题 | 保持处理中 | `null` | 类别＋原因（或失败原因）；第一期不转派 |
 | 无映射 / home 范围外 | 不标处理中；可选 followup 且 `status_change` 为空 | — | 跳过原因；保持原状态 |
 
 第一期不自动转派后端（即使内容像数据/接口问题）。

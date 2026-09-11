@@ -31,6 +31,10 @@ After each successful push, orchestration **ensures** the MR (create, or reuse o
 
 Default agent runner spawns harness `apps/cli` via tsx with product worktree as `cwd` (`harnessRoot` required)—never `pnpm dsh` inside the product tree.
 
+### Stop when context is thin or not clearly frontend
+
+After claim and asset download, if the description is too short and there are no screenshots, orchestration stops with `insufficient_context` before creating `bugfix/*` or calling the agent. When the agent cannot locate a frontend change or cannot confirm a frontend bug, it must emit `SKIP_AUTOFIX|<category>|<reason>`; orchestration writes a platform followup (category + reason), keeps status `处理中`, sets `phase=failed`, and opens no MR.
+
 ### Model-visible brief vs session log
 
 When autofix later runs inside a session-backed agent, the agent brief is model-visible input and must be reconstructable from the session log (model-visible ⟺ logged). Phase-1 `run-once` spawns headless outside that path, so the brief is **not** session-logged yet; that remains an accepted limitation until session integration.

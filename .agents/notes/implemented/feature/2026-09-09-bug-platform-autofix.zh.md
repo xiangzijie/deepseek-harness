@@ -31,6 +31,10 @@ Status: implemented
 
 默认 agent runner 在 `harnessRoot` 下经 tsx 拉起 harness `apps/cli`，cwd 为产品工作区——禁止在产品仓内 `pnpm dsh`。
 
+### 上下文不足／非前端时停止
+
+描述过短且无截图时，领单后预检直接停止并回写 `insufficient_context`，不拉 agent、不建 `bugfix` 分支。Agent 若判定上下文不足或无法确定为前端问题，须在摘要中写 `SKIP_AUTOFIX|<类别>|<原因>`；编排解析后写平台跟进（类别＋原因），状态保持 `处理中`，`phase=failed`，不开 MR。
+
 ### 模型可见 brief 与 session 日志
 
 若日后在带 session 的 agent 内运行自动修复，agent brief 属于模型可见输入，必须能从 session 日志重建（模型可见 ⟺ 已记录）。第一期 `run-once` 在该路径之外拉起 headless，故 brief **尚未**写入 session 日志；在接入 session 前仍接受这一限制。

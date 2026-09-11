@@ -4,6 +4,7 @@
  */
 
 import type { BugTicketDetail } from '@deepseek-ai/dsh-bug-platform-http'
+import { autofixStopBriefRules } from './autofix-stop.ts'
 import type { ResolvedMenu } from './menu-mapping.ts'
 
 /** Inputs for {@link buildAgentBrief}. */
@@ -51,7 +52,8 @@ export function buildAgentBrief(input: AgentBriefInput): string {
     `issue_type=${detail.issue_type ?? '(null)'} importance=${detail.importance ?? '(null)'}`,
     `优先打开 filePath=${resolved.filePath ?? '(none)'}；routeHint=${resolved.routeHint ?? '(none)'}`,
     `需要时再读路由入口：${routesFile}`,
-    '只改映射路径与路由指向的模块；像纯后端/纯数据问题则停止改代码并说明原因。',
+    '',
+    autofixStopBriefRules(),
     '',
     '## description',
     detail.description,

@@ -383,6 +383,52 @@ describe('runOneTicket state machine', () => {
     expect(store.get(428)?.phase).toBe('failed')
   })
 
+  it('stops before agent when description is empty and there are no screenshots', async () => {
+    const ticket = detail({
+      id: 900,
+      target_menu: '资产核查',
+      description: '',
+      screenshots: [],
+    })
+    const { client, followups } = fakeClient({})
+    const agentRunner = vi.fn(async () => ({ ok: true, summary: 'should-not-run' }))
+    const store = new TicketStateStore()
+
+    const outcome = await runOneTicket(
+      baseConfig({ client, agentRunner, runGit: cleanCustomGit(), stateStore: store }),
+      ticket,
+    )
+
+    expect(outcome.kind).toBe('failed')
+    expect(String((outcome as { reason: string }).reason)).toMatch(/停止并跳过|insufficient_context/)
+    expect(agentRunner).not.toHaveBeenCalled()
+    expect(followups.at(-1)?.body.status_change).toBe('处理中')
+    expect(followups.at(-1)?.body.content).toMatch(/停止并跳过/)
+    expect(followups.at(-1)?.body.content).toContain('insufficient_context')
+    expect(store.get(900)?.phase).toBe('failed')
+  })
+
+  it('writes stop followup when agent reports SKIP_AUTOFIX|not_frontend', async () => {
+    const ticket = detail({ id: 901, target_menu: '资产核查' })
+    const { client, followups } = fakeClient({})
+    const agentRunner: AgentRunner = async () => ({
+      ok: false,
+      summary: 'SKIP_AUTOFIX|not_frontend|更像后端接口枚举不一致',
+    })
+    const store = new TicketStateStore()
+
+    const outcome = await runOneTicket(
+      baseConfig({ client, agentRunner, runGit: cleanCustomGit(), stateStore: store }),
+      ticket,
+    )
+
+    expect(outcome.kind).toBe('failed')
+    expect(followups.at(-1)?.body.content).toMatch(/not_frontend/)
+    expect(followups.at(-1)?.body.content).toContain('更像后端接口枚举不一致')
+    expect(followups.at(-1)?.body.status_change).toBe('处理中')
+    expect(store.get(901)?.phase).toBe('failed')
+  })
+
   it('on agent failure or no diff stays 处理中 with phase failed', async () => {
     const ticket = detail({ id: 428, target_menu: '资产核查' })
     const { client, followups } = fakeClient({})

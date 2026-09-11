@@ -55,6 +55,16 @@ export {
 export type { AgentBriefInput } from './agent-brief.ts'
 export { buildAgentBrief } from './agent-brief.ts'
 
+export type { AutofixStop, AutofixStopCategory } from './autofix-stop.ts'
+export {
+  assessPreAgentContext,
+  autofixStopBriefRules,
+  formatAutofixStopFollowup,
+  MIN_DESCRIPTION_CHARS,
+  parseSkipAutofixSummary,
+  SKIP_AUTOFIX_PREFIX,
+} from './autofix-stop.ts'
+
 export type {
   AgentRunner,
   AgentRunnerOptions,

@@ -15,6 +15,12 @@ import type {
 } from '@deepseek-ai/dsh-bug-platform-http'
 import { buildAgentBrief } from './agent-brief.ts'
 import {
+  assessPreAgentContext,
+  formatAutofixStopFollowup,
+  parseSkipAutofixSummary,
+  type AutofixStop,
+} from './autofix-stop.ts'
+import {
   assertClean,
   assertProductBranch,
   commitAll,
@@ -186,6 +192,11 @@ export async function runOneTicket(
 
   const { screenshotPaths, missingAssets } = await downloadAssets(config, detail)
 
+  const preStop = assessPreAgentContext(detail.description, screenshotPaths)
+  if (preStop !== null) {
+    return stopClaimed(config, detail.id, resolved, branchName, preStop)
+  }
+
   try {
     await assertProductBranch(localRoot, expectedJinan, config.runGit)
     await assertClean(localRoot, config.runGit)
@@ -219,12 +230,26 @@ export async function runOneTicket(
   }
 
   if (!agentResult.ok) {
+    const skip = parseSkipAutofixSummary(agentResult.summary)
+    if (skip !== null) {
+      return stopClaimed(config, detail.id, resolved, branchName, skip)
+    }
     return failClaimed(config, detail.id, resolved, branchName, agentResult.summary)
   }
 
   const changed = await listChangedFiles(localRoot, config.runGit)
   if (changed.length === 0) {
-    return failClaimed(config, detail.id, resolved, branchName, '无有效 diff（工作区无变更）')
+    const skip = parseSkipAutofixSummary(agentResult.summary)
+    if (skip !== null) {
+      return stopClaimed(config, detail.id, resolved, branchName, skip)
+    }
+    return failClaimed(
+      config,
+      detail.id,
+      resolved,
+      branchName,
+      '无有效 diff（工作区无变更）；若因上下文不足或非前端问题停止，请在摘要中写 SKIP_AUTOFIX|<类别>|<原因>',
+    )
   }
 
   if (config.lintEnabled === true) {
@@ -426,6 +451,38 @@ async function downloadAssets(
  */
 function safeFileName(name: string): string {
   return name.replace(/[^\w.\-()+@]+/g, '_') || 'asset'
+}
+
+/**
+ * Followup stay-处理中 + phase failed when autofix stops without a code fix
+ * (insufficient context, not frontend, or agent SKIP_AUTOFIX).
+ * @param config - orchestrator config.
+ * @param ticketId - platform id.
+ * @param resolved - menu hit used for repo/branch bookkeeping.
+ * @param branch - bugfix branch name.
+ * @param stop - structured stop category + reason.
+ * @returns failed outcome whose reason is the followup body.
+ */
+async function stopClaimed(
+  config: OrchestratorConfig,
+  ticketId: number,
+  resolved: ResolvedMenu,
+  branch: string,
+  stop: AutofixStop,
+): Promise<TicketOutcome> {
+  const content = formatAutofixStopFollowup(stop)
+  await config.client.createFollowup(ticketId, {
+    content,
+    status_change: '处理中',
+    assignee_change: null,
+  })
+  upsertPhase(config, {
+    ticketId,
+    phase: 'failed',
+    repo: resolved.repo,
+    branch,
+  })
+  return { kind: 'failed', reason: content }
 }
 
 /**
