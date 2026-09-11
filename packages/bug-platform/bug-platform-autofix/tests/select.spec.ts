@@ -124,13 +124,14 @@ describe('selectTickets', () => {
     expect(selected).toEqual([])
   })
 
-  it('skips tickets that are active in the local state store', () => {
+  it('skips tickets that are active or pre-claim skipped in the local state store', () => {
     const store = new TicketStateStore([
       activeRecord(10, 'claimed'),
       activeRecord(11, 'fixing'),
       activeRecord(12, 'awaiting_push'),
       activeRecord(13, 'done'),
       activeRecord(14, 'failed'),
+      activeRecord(16, 'skipped'),
     ])
     const selected = selectTickets(
       [
@@ -140,6 +141,7 @@ describe('selectTickets', () => {
         ticket({ id: 13 }),
         ticket({ id: 14 }),
         ticket({ id: 15 }),
+        ticket({ id: 16 }),
       ],
       index,
       store,

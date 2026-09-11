@@ -6,8 +6,15 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname } from 'node:path'
 
-/** Lifecycle phase recorded for a ticket after claim or repair attempt. */
-export type TicketPhase = 'claimed' | 'fixing' | 'awaiting_push' | 'done' | 'failed'
+/** Lifecycle phase recorded for a ticket after claim, skip, or repair attempt. */
+export type TicketPhase =
+  | 'claimed'
+  | 'fixing'
+  | 'awaiting_push'
+  | 'done'
+  | 'failed'
+  /** Pre-claim stop (e.g. insufficient context); platform status unchanged. */
+  | 'skipped'
 
 /** One ticket's durable local record. */
 export interface TicketRecord {
@@ -184,6 +191,7 @@ function isTicketPhase(value: unknown): value is TicketPhase {
     value === 'fixing' ||
     value === 'awaiting_push' ||
     value === 'done' ||
-    value === 'failed'
+    value === 'failed' ||
+    value === 'skipped'
   )
 }

@@ -420,14 +420,14 @@ describe('runOneTicket state machine', () => {
     expect(store.get(428)?.phase).toBe('failed')
   })
 
-  it('stops before agent when description is empty and there are no screenshots', async () => {
+  it('skips pre-claim when description is empty and there are no screenshots', async () => {
     const ticket = detail({
       id: 900,
       target_menu: '资产核查',
       description: '',
       screenshots: [],
     })
-    const { client, followups } = fakeClient({})
+    const { client, followups, order } = fakeClient({})
     const agentRunner = vi.fn(async () => ({ ok: true, summary: 'should-not-run' }))
     const store = new TicketStateStore()
 
@@ -436,13 +436,16 @@ describe('runOneTicket state machine', () => {
       ticket,
     )
 
-    expect(outcome.kind).toBe('failed')
+    expect(outcome.kind).toBe('skipped')
     expect(String((outcome as { reason: string }).reason)).toMatch(/停止并跳过|insufficient_context/)
     expect(agentRunner).not.toHaveBeenCalled()
-    expect(followups.at(-1)?.body.status_change).toBe('处理中')
+    expect(order.some(s => s.includes('处理中'))).toBe(false)
+    expect(followups.at(-1)?.body.status_change == null || followups.at(-1)?.body.status_change === '').toBe(
+      true,
+    )
     expect(followups.at(-1)?.body.content).toMatch(/停止并跳过/)
     expect(followups.at(-1)?.body.content).toContain('insufficient_context')
-    expect(store.get(900)?.phase).toBe('failed')
+    expect(store.get(900)?.phase).toBe('skipped')
   })
 
   it('writes stop followup when agent reports SKIP_AUTOFIX|not_frontend', async () => {
@@ -512,7 +515,9 @@ describe('runOneTicket state machine', () => {
     ])
     const claimIdx = order.indexOf('followup:428:处理中')
     const firstDownload = order.findIndex(s => s.startsWith('download:'))
-    expect(firstDownload).toBeGreaterThan(claimIdx)
+    // Assets download before claim so insufficient-context can skip without 处理中.
+    expect(firstDownload).toBeGreaterThanOrEqual(0)
+    expect(claimIdx).toBeGreaterThan(firstDownload)
     const agentCall = agentRunner.mock.calls[0]?.[0]
     expect(agentCall?.brief).toContain('shot.png')
     expect(agentCall?.cwd).toBe(CUSTOM_ROOT)

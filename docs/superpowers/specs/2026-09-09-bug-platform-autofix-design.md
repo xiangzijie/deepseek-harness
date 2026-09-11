@@ -120,7 +120,7 @@ Followup 写回字段（已验证）：`content`、`attachments`、`status_chang
 - `GET /api/bug-tickets/:id`。
 - 取出并规范化：`id`、`target_menu`、`description`、`issue_type`、`importance`、`followups`。
 - `followups` 按 `created_at` 升序排列，注入时标明「以最新跟进为准」。
-- 此时只记录截图/附件的远程 `url` 列表，**先不下载**（等映射通过并领单后再下，避免无映射单浪费 IO）。
+- 此时只记录截图/附件的远程 `url` 列表；**映射通过后再下载**（避免无映射单浪费 IO）。下载与上下文预检在领单（3.5）之前完成。
 
 ### 3.4 映射决议（领单前）
 
@@ -158,7 +158,7 @@ Followup 写回字段（已验证）：`content`、`attachments`、`status_chang
 - 启动 dsh headless（或等价编排）：工作目录=目标仓；注入 §4.1 brief（含本地截图路径、`routesFile`、`filePath`/`routeHint`）。
 - 优先在映射路径与路由指向的模块内修改。
 - **停止／跳过（非「猜改」）**：上下文不足，或无法确定为前端问题（更像接口／数据／权限／配置／纯后端）时，禁止改码。Agent 摘要须含一行 `SKIP_AUTOFIX|<类别>|<原因>`（类别：`insufficient_context`｜`not_frontend`｜`out_of_scope`）；编排解析后写平台跟进（含类别与原因），状态保持 `处理中`，本地 `phase=failed`。
-- **预检**：领单并下载附件后、创建 `bugfix/*`／调 agent 前，若描述过短（阈值见实现）且无可用截图，直接停止并回写 `insufficient_context`，不拉 agent。
+- **预检**：领单并下载附件前，若描述过短（阈值见实现）且无可用截图，直接停止：写平台处理记录（含类别与原因），**不**改为 `处理中`，本地 `phase=skipped`（白名单跑批不再自动重拉；`--ticket` 可强制重试）。
 - **判断准则（brief，不新增类别）**：独立判断、勿一味迎合工单叙述；区分事实／预测／观点；信息源优先级为本仓代码与映射 → 截图／附件 → 带具体路径或接口的最新跟进 → 较早跟进 → 笼统描述。证据冲突、需求型诉求、过大改动面、仅能线上复现、环境配置、已修复／过时、安全敏感等，归入上述三类停止，禁止猜改。
 
 ### 3.9 门禁
@@ -225,7 +225,7 @@ Followup 写回字段（已验证）：`content`、`attachments`、`status_chang
 | MR 成功 | `处理中` | `null` | MR 链接 + 摘要；请人工审阅合入（不改为现场验证） |
 | 本地已修好但 Git 失败 | `处理中`（或 `status_change` 为空且当前已是处理中） | `null` | 分支名、commit、待人工推送；禁止标现场验证 |
 | 修失败 / `SKIP_AUTOFIX` 停止 / 像后端问题 | 保持处理中 | `null` | 类别＋原因（或失败原因）；第一期不转派 |
-| 无映射 / home 范围外 | 不标处理中；可选 followup 且 `status_change` 为空 | — | 跳过原因；保持原状态 |
+| 无映射 / home / 预检不足（未领单） | 不标处理中；followup 且 `status_change` 为空 | — | 跳过／停止原因；保持原状态 |
 
 第一期不自动转派后端（即使内容像数据/接口问题）。
 

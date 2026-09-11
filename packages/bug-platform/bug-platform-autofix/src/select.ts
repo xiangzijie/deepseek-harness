@@ -54,7 +54,7 @@ export interface SelectTicketsOptions {
  * Filter list rows to unassigned, status-allowed, mapped, non-active candidates.
  * @param tickets - platform list rows (or compatible summaries).
  * @param index - menu mapping index from {@link loadMenuMapping}.
- * @param store - local idempotency store; active phases are skipped.
+ * @param store - local idempotency store; active and pre-claim `skipped` phases are skipped.
  * @param options - optional status allow-list override.
  * @returns tickets that pass every selection rule, in input order.
  */
@@ -79,6 +79,9 @@ export function selectTickets(
       return false
     }
     if (store.isActiveTicket(ticket.id)) {
+      return false
+    }
+    if (store.get(ticket.id)?.phase === 'skipped') {
       return false
     }
     return true

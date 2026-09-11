@@ -1,7 +1,8 @@
 /**
  * End-to-end orchestrator for one ticket / one batch (design §3).
  * Mapping is resolved before any `处理中` claim; home / unmapped /
- * {@link isExcludedTargetMenu} never claim.
+ * {@link isExcludedTargetMenu} never claim. Context precheck runs after
+ * mapping and asset download, still before claim.
  *
  * @module @deepseek-ai/dsh-bug-platform-autofix/orchestrator
  */
@@ -174,7 +175,17 @@ export async function runOneTicket(
   const prior = config.stateStore.get(detail.id)
   const isReprocess =
     prior !== undefined &&
-    (prior.phase === 'done' || prior.phase === 'awaiting_push' || prior.phase === 'failed')
+    (prior.phase === 'done' ||
+      prior.phase === 'awaiting_push' ||
+      prior.phase === 'failed' ||
+      prior.phase === 'skipped')
+
+  // Download + cheap context gate before claiming so thin tickets never become 处理中.
+  const { screenshotPaths, missingAssets } = await downloadAssets(config, detail)
+  const preStop = assessPreAgentContext(detail.description, screenshotPaths)
+  if (preStop !== null) {
+    return skipBeforeClaim(config, detail.id, resolved, branchName, preStop)
+  }
 
   await config.client.createFollowup(detail.id, {
     content: isReprocess
@@ -189,13 +200,6 @@ export async function runOneTicket(
     repo: resolved.repo,
     branch: branchName,
   })
-
-  const { screenshotPaths, missingAssets } = await downloadAssets(config, detail)
-
-  const preStop = assessPreAgentContext(detail.description, screenshotPaths)
-  if (preStop !== null) {
-    return stopClaimed(config, detail.id, resolved, branchName, preStop)
-  }
 
   try {
     await assertProductBranch(localRoot, expectedJinan, config.runGit)
@@ -454,8 +458,42 @@ function safeFileName(name: string): string {
 }
 
 /**
+ * Pre-claim stop: write a platform followup without changing status, record
+ * local `skipped` so whitelist batches do not immediately re-pick the ticket.
+ * @param config - orchestrator config.
+ * @param ticketId - platform id.
+ * @param resolved - menu hit used for repo/branch bookkeeping.
+ * @param branch - planned bugfix branch name (may not exist on disk yet).
+ * @param stop - structured stop category + reason.
+ * @returns skipped outcome whose reason is the followup body.
+ */
+async function skipBeforeClaim(
+  config: OrchestratorConfig,
+  ticketId: number,
+  resolved: ResolvedMenu,
+  branch: string,
+  stop: AutofixStop,
+): Promise<TicketOutcome> {
+  const content = formatAutofixStopFollowup(stop)
+  if (config.writeSkipFollowup !== false) {
+    await config.client.createFollowup(ticketId, {
+      content,
+      status_change: null,
+      assignee_change: null,
+    })
+  }
+  upsertPhase(config, {
+    ticketId,
+    phase: 'skipped',
+    repo: resolved.repo,
+    branch,
+  })
+  return { kind: 'skipped', reason: content }
+}
+
+/**
  * Followup stay-处理中 + phase failed when autofix stops without a code fix
- * (insufficient context, not frontend, or agent SKIP_AUTOFIX).
+ * after claim (agent SKIP_AUTOFIX).
  * @param config - orchestrator config.
  * @param ticketId - platform id.
  * @param resolved - menu hit used for repo/branch bookkeeping.
