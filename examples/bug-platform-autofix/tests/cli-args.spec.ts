@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { parseRunOnceArgs } from '../cli-args.ts'
+import { parseRunOnceArgs } from '../src/cli-args.ts'
 
 describe('parseRunOnceArgs', () => {
   it('defaults to empty ticketIds and maxTickets 1 for list batch', () => {
@@ -38,10 +38,10 @@ describe('parseRunOnceArgs', () => {
   })
 
   it('parses --status for list filter', () => {
-    expect(parseRunOnceArgs(['node', 'run-once.ts', '--max', '3', '--status', '待确认,验证未通过'])).toEqual({
+    expect(parseRunOnceArgs(['node', 'run-once.ts', '--max', '3', '--status', '待确�?验证未通过'])).toEqual({
       ticketIds: [],
       maxTickets: 3,
-      status: '待确认,验证未通过',
+      status: '待确�?验证未通过',
     })
   })
 
@@ -64,7 +64,7 @@ describe('parseRunOnceArgs', () => {
   it('rejects --ticket together with --tickets', () => {
     expect(() =>
       parseRunOnceArgs(['node', 'run-once.ts', '--ticket', '1', '--tickets', '2,3']),
-    ).toThrow(/不能同时使用 --ticket 与 --tickets/)
+    ).toThrow(/不能同时使用 --ticket �?--tickets/)
   })
 
   it('rejects empty --tickets', () => {
