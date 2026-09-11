@@ -25,9 +25,9 @@ Status: implemented
 
 ### 门禁、GitLab 与再次修单
 
-`lintEnabled` 与 `buildEnabled` **默认关闭**。`GITLAB_TOKEN` 可选。无 token 或 push／ensure MR 失败时，平台保持 `处理中`，本地记 `phase=awaiting_push`，**不得**标 `现场验证`。
+`lintEnabled` 与 `buildEnabled` **默认关闭**。`GITLAB_TOKEN` 可选。无 token 或 push／ensure MR 失败时，平台保持 `处理中`，本地记 `phase=awaiting_push`。push 成功时平台状态仍为 **`处理中`**（跟进含 MR 链接），**不得**标 `现场验证`；由人工审阅合入。
 
-每次 push 成功后，编排 **ensure** MR（创建或冲突时复用）、写 MR note，并写平台 followup（`现场验证`，含 MR／commit／摘要）。同一 `bugfix/<id>` 的再次修复因此仍更新平台处理记录与 MR 讨论，不会仅因「MR 已存在」失败。强制 `--ticket`／`--tickets` 可重跑 `done`／`awaiting_push`／`failed`；仅本地 `claimed`／`fixing` 会拦住。
+每次 push 成功后，编排 **ensure** MR（创建或冲突时复用）、写 MR note，并写平台 followup（`处理中`，含 MR／commit／摘要）。同一 `bugfix/<id>` 的再次修复因此仍更新平台处理记录与 MR 讨论，不会仅因「MR 已存在」失败。强制 `--ticket`／`--tickets` 可重跑 `done`／`awaiting_push`／`failed`；仅本地 `claimed`／`fixing` 会拦住。
 
 默认 agent runner 在 `harnessRoot` 下经 tsx 拉起 harness `apps/cli`，cwd 为产品工作区——禁止在产品仓内 `pnpm dsh`。
 

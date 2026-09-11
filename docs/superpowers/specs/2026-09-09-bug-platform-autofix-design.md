@@ -78,7 +78,7 @@ Followup 写回字段（已验证）：`content`、`attachments`、`status_chang
 - 项目 path：`jgts/bigdata-web-frontend`（三工作区共用同一 remote）
 - MR：在对应工作区内 push `bugfix/<id>`，目标分支为**该工作区绑定的 jinan**（custom 单 → `dkh-custom-jinan`，ailpha 单 → `dkh-ailpha-jinan`）；不得把 custom 修复 MR 打到 ailpha 分支
 - 策略：优先自动 push + 开 MR；失败则本地 commit，平台保持 `处理中` 并注明待人工推送
-- 凭证：`GITLAB_TOKEN` 等，仅 env；无 Token 时不得报「现场验证」成功
+- 凭证：`GITLAB_TOKEN` 等，仅 env；无 Token 时不得假装修单已闭环成功
 
 ## 3. 端到端流程
 
@@ -172,7 +172,7 @@ Followup 写回字段（已验证）：`content`、`attachments`、`status_chang
 ### 3.10 Git 与结果回写
 
 - **尝试**：在**同一目标目录**内 commit → push `bugfix/<id>` → 向**该目录绑定的 jinan** **ensure** MR（同一 `bigdata-web-frontend` 项目内；custom 单目标 `dkh-custom-jinan`，不得打到 `dkh-ailpha-jinan`）：首次创建；若源分支已有 MR（冲突）则复用已有 MR，不因二次修单失败。
-- **每次 push 成功**：向该 MR 追加 discussion note（含 commit 与摘要）；平台 followup `status_change=现场验证`，content 含 MR URL、commit、摘要（首次与再次提交均写独立跟进）；`phase=done`，记录 `mrUrl`。
+- **每次 push 成功**：向该 MR 追加 discussion note（含 commit 与摘要）；平台 followup `status_change=处理中`，content 含 MR URL、commit、摘要（首次与再次提交均写独立跟进；**不**改为「现场验证」）；`phase=done`，记录 `mrUrl`。
 - **无 Token / push 或 ensure MR 失败**：确保本地 commit 存在；followup 保持 `处理中`（或 `status_change=处理中`），写分支名、commit、待人工推送；`phase=awaiting_push`。**禁止**标「现场验证」。
 - **修失败 / 偏后端**：followup 保持 `处理中` + 原因；不开假 MR；`phase=failed`。
 - 本批若 `maxTickets>1`，回到列表循环处理下一候选；第一期默认处理完 1 单成功或 1 单失败尝试后结束亦可配置。
@@ -180,7 +180,7 @@ Followup 写回字段（已验证）：`content`、`attachments`、`status_chang
 
 ### 3.11 合入策略（产品约定）
 
-默认模式：**自动修 + 人工合**。开 MR 并回写 `现场验证` 后，由人审 diff／合入 jinan；编排**不得**默认调用 GitLab merge。
+默认模式：**自动修 + 人工合**。开 MR 并回写 `处理中`（跟进含 MR 链接）后，由人审 diff／合入 jinan；编排**不得**默认调用 GitLab merge，也**不得**把平台状态改为「现场验证」。
 
 例外（后续分期可实现，一期不启用）：仅当修复后判定为**百分之百无问题**时，才允许自动合入该 MR。启用时必须同时满足：
 
@@ -220,7 +220,7 @@ Followup 写回字段（已验证）：`content`、`attachments`、`status_chang
 | 事件 | `status_change` | `assignee_change` | `content` 要点 |
 |------|-----------------|-------------------|----------------|
 | 领单开始 | `处理中` | `null`（不改指派） | 自动修复开始 |
-| MR 成功 | `现场验证` | `null` | MR 链接 + 摘要 |
+| MR 成功 | `处理中` | `null` | MR 链接 + 摘要；请人工审阅合入（不改为现场验证） |
 | 本地已修好但 Git 失败 | `处理中`（或 `status_change` 为空且当前已是处理中） | `null` | 分支名、commit、待人工推送；禁止标现场验证 |
 | 修失败 / 像后端问题 | 保持处理中 | `null` | 失败原因；第一期不转派 |
 | 无映射 / home 范围外 | 不标处理中；可选 followup 且 `status_change` 为空 | — | 跳过原因；保持原状态 |
@@ -252,7 +252,7 @@ Followup 写回字段（已验证）：`content`、`attachments`、`status_chang
 1. 手动触发后，能领到符合过滤条件的未指派单，并写 `处理中`。
 2. 无映射的单被跳过且有跟进说明。
 3. 有映射的试点单：只在正确本地目录（优先 custom）产生 `bugfix/<id>` 与本地 commit；不出现在错误目录切换产品 jinan 改代码。
-4. GitLab 可用时开出 MR 并回写 `现场验证`；不可用时保持 `处理中` 且说明待推送。
+4. GitLab 可用时开出 MR 并回写 `处理中`（跟进含 MR）；不可用时保持 `处理中` 且说明待推送。全程不标「现场验证」。
 5. 凭证仅来自环境变量；仓库中无密钥。
 
 ## 9. 后续分期
@@ -276,7 +276,7 @@ Followup 写回字段（已验证）：`content`、`attachments`、`status_chang
 
 **流程（已约定）**
 
-1. AI 修单成功（已开／复用 MR、回写 `现场验证`）后，系统根据 diff 与摘要**自动起草**一条短经验（症状、菜单、改法、关键路径、反例），状态为「待确认」。草稿默认挂在修单成功，**不依赖**人工是否已合入 MR。
+1. AI 修单成功（已开／复用 MR、回写 `处理中` 且跟进含 MR）后，系统根据 diff 与摘要**自动起草**一条短经验（症状、菜单、改法、关键路径、反例），状态为「待确认」。草稿默认挂在修单成功，**不依赖**人工是否已合入 MR。
 2. **通用型闸门**（规则与／或模型）：跨页共用组件／枚举／请求约定、同类菜单或问题类型可复用者进入待确认队列；一次性文案、纯后端／数据、单页特例 → 不入库（可丢弃或标「不入库」）。
 3. **人工**只处理待确认队列（抽查，非每单必做）：通过／改一句后入库，或拒绝。日常仍以人工合 MR 为主；合入本身不等于经验入库。发现误导性已入库条目时作废／删除。
 4. 下次领单：按 `target_menu`／问题类型检索已入库经验 ≤N 条，注入 Agent brief。

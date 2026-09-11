@@ -26,11 +26,11 @@
 
 ## 可选 GitLab MR
 
-`ensureMergeRequest(...)` 先 `POST` 创建 MR；若源分支已有 MR（典型 HTTP 409），则按 `source_branch` 查出已有 MR 并复用。`addMergeRequestNote(...)` 向该 MR 写讨论备注。编排在**每次** push 成功后：ensure MR → 写 MR note（含 commit 与摘要）→ 平台 followup（`现场验证`，含 MR / commit / 摘要）。因此同一 `bugfix/<id>` 的第二次及以后修复不会因「MR 已存在」落入 `awaiting_push`，且每次都有独立评论。`createMergeRequest` 仍导出为仅创建的薄封装。`token` 缺失时抛出 `GitlabTokenMissingError`，编排保持 `处理中`／`awaiting_push`，不得标 `现场验证`。测试可注入 `fetchImpl`、`ensureMr`、`addMrNote`。
+`ensureMergeRequest(...)` 先 `POST` 创建 MR；若源分支已有 MR（典型 HTTP 409），则按 `source_branch` 查出已有 MR 并复用。`addMergeRequestNote(...)` 向该 MR 写讨论备注。编排在**每次** push 成功后：ensure MR → 写 MR note（含 commit 与摘要）→ 平台 followup（`处理中`，含 MR / commit / 摘要；**不**标 `现场验证`）。因此同一 `bugfix/<id>` 的第二次及以后修复不会因「MR 已存在」落入 `awaiting_push`，且每次都有独立评论。`createMergeRequest` 仍导出为仅创建的薄封装。`token` 缺失时抛出 `GitlabTokenMissingError`，编排保持 `处理中`／`awaiting_push`。测试可注入 `fetchImpl`、`ensureMr`、`addMrNote`。
 
 ## 编排
 
-`runOneTicket(config, ticketIdOrDetail)` 实现领单 → 修复 → Git 状态机。可传入已加载的 `BugTicketDetail` 强制领单（如 `--ticket 428`），绕过列表状态白名单。映射决议在任何 `处理中` followup 之前完成；无映射／home 可选 followup 且 `status_change` 为空／null，不领单。领单：`status_change=处理中`，`assignee_change=null`。领单后再下附件（跳过 `file_size === 0`）。`lintEnabled`／`buildEnabled` 默认 `false`。MR 成功 → followup `现场验证`，`phase=done`；本地已 commit 但 push／MR 失败 → 保持 `处理中`，`phase=awaiting_push`；修复失败／无 diff → 保持 `处理中`，`phase=failed`。错误产品 jinan 硬失败且禁止自动 checkout。`runBatch(config, { maxTickets: 1 })` 先 `ensureToken`，再拉候选并调用 `runOneTicket` 至多 `maxTickets` 次。测试可注入 `agentRunner`、`runGit`、`ensureMr`、`addMrNote`；`buildAgentBrief`／`createDefaultAgentRunner` 负责 brief 与默认从 harness `apps/cli` 拉起 headless（需 `harnessRoot`，cwd 为产品仓）。
+`runOneTicket(config, ticketIdOrDetail)` 实现领单 → 修复 → Git 状态机。可传入已加载的 `BugTicketDetail` 强制领单（如 `--ticket 428`），绕过列表状态白名单。映射决议在任何 `处理中` followup 之前完成；无映射／home 可选 followup 且 `status_change` 为空／null，不领单。领单：`status_change=处理中`，`assignee_change=null`。领单后再下附件（跳过 `file_size === 0`）。`lintEnabled`／`buildEnabled` 默认 `false`。MR 成功 → followup 保持 `处理中`（含 MR 链接与摘要），`phase=done`；本地已 commit 但 push／MR 失败 → 保持 `处理中`，`phase=awaiting_push`；修复失败／无 diff → 保持 `处理中`，`phase=failed`。自动修复**从不**标 `现场验证`。错误产品 jinan 硬失败且禁止自动 checkout。`runBatch(config, { maxTickets: 1 })` 先 `ensureToken`，再拉候选并调用 `runOneTicket` 至多 `maxTickets` 次。测试可注入 `agentRunner`、`runGit`、`ensureMr`、`addMrNote`；`buildAgentBrief`／`createDefaultAgentRunner` 负责 brief 与默认从 harness `apps/cli` 拉起 headless（需 `harnessRoot`，cwd 为产品仓）。
 
 ## 模型体验
 

@@ -184,8 +184,9 @@ describe('runOneTicket state machine', () => {
     expect(order.indexOf('followup:428:处理中')).toBeGreaterThanOrEqual(0)
     expect(followups[0]?.body.status_change).toBe('处理中')
     expect(followups[0]?.body.assignee_change).toBeNull()
-    expect(followups.at(-1)?.body.status_change).toBe('现场验证')
+    expect(followups.at(-1)?.body.status_change).toBe('处理中')
     expect(followups.at(-1)?.body.content).toContain('http://gitlab.example.com/mr/1')
+    expect(followups.at(-1)?.body.content).toMatch(/自动修复完成|MR/)
     expect(addMrNote).toHaveBeenCalledWith(
       expect.objectContaining({
         mergeRequestIid: 1,
@@ -245,11 +246,16 @@ describe('runOneTicket state machine', () => {
         body: expect.stringMatching(/99d9ce66578ff777ee06c4d7ce716220178ef328|second pass fix/),
       }),
     )
-    const successFollowups = followups.filter(f => f.body.status_change === '现场验证')
-    expect(successFollowups).toHaveLength(1)
-    expect(successFollowups[0]?.body.content).toContain('http://gitlab.example.com/mr/8')
-    expect(successFollowups[0]?.body.content).toMatch(/重新处理|99d9ce66578ff777ee06c4d7ce716220178ef328|second pass fix/)
+    const successFollowups = followups.filter(
+      f =>
+        f.body.status_change === '处理中' &&
+        typeof f.body.content === 'string' &&
+        f.body.content.includes('http://gitlab.example.com/mr/8'),
+    )
+    expect(successFollowups.length).toBeGreaterThanOrEqual(1)
+    expect(successFollowups.at(-1)?.body.content).toMatch(/重新处理|99d9ce66578ff777ee06c4d7ce716220178ef328|second pass fix/)
     expect(followups.some(f => f.body.content.includes('重新处理开始'))).toBe(true)
+    expect(followups.every(f => f.body.status_change !== '现场验证')).toBe(true)
     expect(store.get(325)?.phase).toBe('done')
     expect(store.get(325)?.mrUrl).toBe('http://gitlab.example.com/mr/8')
   })

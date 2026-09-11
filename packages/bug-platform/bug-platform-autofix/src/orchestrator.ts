@@ -283,12 +283,12 @@ export async function runOneTicket(
 
     const followupPrefix =
       isReprocess || !mr.created
-        ? '自动修复重新处理完成，请现场验证。'
-        : '自动修复完成，请现场验证。'
+        ? '自动修复重新处理完成：已更新 MR，请人工审阅合入。'
+        : '自动修复完成：已开 MR，请人工审阅合入。'
     await config.client.createFollowup(detail.id, {
       content:
         `${followupPrefix}\nMR: ${mr.webUrl}\ncommit: ${commitSha}\n${agentResult.summary}`,
-      status_change: '现场验证',
+      status_change: '处理中',
       assignee_change: null,
     })
     upsertPhase(config, {
@@ -301,7 +301,7 @@ export async function runOneTicket(
     return { kind: 'done', mrUrl: mr.webUrl }
   } catch (error) {
     // Local commit exists: keep 处理中 / awaiting_push for any push or MR failure
-    // (including GitlabTokenMissingError). Never claim 现场验证.
+    // (including GitlabTokenMissingError). Autofix never claims 现场验证.
     void (error instanceof GitlabTokenMissingError)
     const reason =
       `本地已 commit（${commitSha}），分支 ${branchName}，待人工推送/开 MR：${errorMessage(error)}`

@@ -25,9 +25,9 @@ The three local roots (`dkh-custom`, `dkh-ailpha`, `dkh-home`) share one GitLab 
 
 ### Gates, GitLab, and re-fix
 
-`lintEnabled` and `buildEnabled` default **off**. `GITLAB_TOKEN` is optional. Missing token or push/ensure-MR failure keeps platform status `处理中`, records `phase=awaiting_push`, and must not claim `现场验证`.
+`lintEnabled` and `buildEnabled` default **off**. `GITLAB_TOKEN` is optional. Missing token or push/ensure-MR failure keeps platform status `处理中`, records `phase=awaiting_push`. Successful push keeps platform status **`处理中`** (followup includes MR URL) and must **not** claim `现场验证`; human review merges the MR.
 
-After each successful push, orchestration **ensures** the MR (create, or reuse on conflict), adds an MR note, and writes a platform followup (`现场验证` with MR / commit / summary). A second pass on the same `bugfix/<id>` therefore still updates bug-platform处理记录 and MR discussion instead of failing solely because the MR already exists. Force `--ticket` / `--tickets` may retry `done` / `awaiting_push` / `failed`; only local `claimed` / `fixing` block.
+After each successful push, orchestration **ensures** the MR (create, or reuse on conflict), adds an MR note, and writes a platform followup (`处理中` with MR / commit / summary; never `现场验证`). A second pass on the same `bugfix/<id>` therefore still updates bug-platform处理记录 and MR discussion instead of failing solely because the MR already exists. Force `--ticket` / `--tickets` may retry `done` / `awaiting_push` / `failed`; only local `claimed` / `fixing` block.
 
 Default agent runner spawns harness `apps/cli` via tsx with product worktree as `cwd` (`harnessRoot` required)—never `pnpm dsh` inside the product tree.
 

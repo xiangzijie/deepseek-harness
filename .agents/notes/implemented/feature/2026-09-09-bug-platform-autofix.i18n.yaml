@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/feature/2026-09-09-bug-platform-autofix.md
-2026-09-09-bug-platform-autofix.md: 5248c9076ad32d0aeab244c7dfbd938836272bfd
-2026-09-09-bug-platform-autofix.zh.md: 92899ed861cd6bfe00f37d5fde1c5a192dd2d7ad
+2026-09-09-bug-platform-autofix.md: 6fe01d649ec0ffa0ebce83874b2b6e70843c5d0a
+2026-09-09-bug-platform-autofix.zh.md: a7109c53a64bfbbe90d673df5d8333cc1b8db715
