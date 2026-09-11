@@ -33,7 +33,7 @@ Status: implemented
 
 ### 上下文不足／非前端时停止
 
-描述过短且无截图时，领单后预检直接停止并回写 `insufficient_context`，不拉 agent、不建 `bugfix` 分支。Agent 若判定上下文不足或无法确定为前端问题，须在摘要中写 `SKIP_AUTOFIX|<类别>|<原因>`；编排解析后写平台跟进（类别＋原因），状态保持 `处理中`，`phase=failed`，不开 MR。
+描述过短且无截图时，领单后预检直接停止并回写 `insufficient_context`，不拉 agent、不建 `bugfix` 分支。Agent 若判定上下文不足或无法确定为前端问题，须在摘要中写 `SKIP_AUTOFIX|<类别>|<原因>`；编排解析后写平台跟进（类别＋原因），状态保持 `处理中`，`phase=failed`，不开 MR。brief 另含判断准则：独立判断、勿迎合叙述；区分事实／预测／观点；按本仓代码 → 截图 → 具体跟进 → 笼统描述取证。矛盾诉求、过大改动、环境配置、已修复、安全敏感等仍用现有三类停止，不新增类别。
 
 ### 模型可见 brief 与 session 日志
 

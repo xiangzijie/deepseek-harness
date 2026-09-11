@@ -65,5 +65,16 @@ describe('autofixStopBriefRules', () => {
     expect(rules).toContain('SKIP_AUTOFIX|')
     expect(rules).toContain('insufficient_context')
     expect(rules).toContain('not_frontend')
+    expect(rules).toContain('out_of_scope')
+  })
+
+  it('requires independent judgment and evidence priority without new SKIP categories', () => {
+    const rules = autofixStopBriefRules()
+    expect(rules).toMatch(/不要一味迎合|独立判断/)
+    expect(rules).toMatch(/事实|预测|观点/)
+    expect(rules).toMatch(/信息源|证据/)
+    expect(rules).toContain('本仓代码')
+    // Still only the three categories — no ambiguous_requirements / already_fixed tokens as categories
+    expect(rules).not.toMatch(/ambiguous_requirements|already_fixed|needs_human_decision/)
   })
 })
