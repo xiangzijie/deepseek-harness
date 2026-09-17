@@ -76,7 +76,8 @@ export type LintRunner = (opts: {
 export type OrchestratorClient = Pick<
   BugPlatformClient,
   'ensureToken' | 'listTickets' | 'getTicket' | 'createFollowup' | 'downloadToFile'
->
+> &
+  Partial<Pick<BugPlatformClient, 'getLoggedInUserId'>>
 
 /** Injectable orchestration config. */
 export interface OrchestratorConfig {
@@ -127,6 +128,27 @@ export interface RunBatchOptions {
   maxTickets?: number
   /** Comma-separated list status filter; defaults to `待确认,验证未通过,转派,转需求`. */
   status?: string
+  /**
+   * Called once candidates are selected (before any ticket runs), with the
+   * ids that will be attempted (already capped by {@link RunBatchOptions.maxTickets}).
+   * @param ticketIds - attempt order.
+   */
+  onQueue?: (ticketIds: readonly number[]) => void
+  /**
+   * Called immediately before {@link runOneTicket} for each candidate.
+   * @param info - 1-based index, total, and ticket id.
+   */
+  onTicketStart?: (info: { index: number; total: number; ticketId: number }) => void
+  /**
+   * Called after {@link runOneTicket} returns for each candidate.
+   * @param info - index, total, ticket id, and outcome.
+   */
+  onTicketEnd?: (info: {
+    index: number
+    total: number
+    ticketId: number
+    outcome: TicketOutcome
+  }) => void
 }
 
 const DEFAULT_PROJECT_ID = 47
@@ -419,11 +441,21 @@ export async function runBatch(
     page += 1
   }
 
-  const candidates = selectTickets(collected, config.menuIndex, config.stateStore)
+  const selfId = config.client.getLoggedInUserId?.()
+  const candidates = selectTickets(collected, config.menuIndex, config.stateStore, {
+    alsoAssignedTo: selfId === undefined ? [] : [selfId],
+  })
+  const planned = candidates.slice(0, maxTickets)
+  options.onQueue?.(planned.map(row => row.id))
   const outcomes: TicketOutcome[] = []
-  for (const row of candidates) {
-    if (outcomes.length >= maxTickets) break
-    outcomes.push(await runOneTicket(config, row.id))
+  const total = planned.length
+  let index = 0
+  for (const row of planned) {
+    index += 1
+    options.onTicketStart?.({ index, total, ticketId: row.id })
+    const outcome = await runOneTicket(config, row.id)
+    options.onTicketEnd?.({ index, total, ticketId: row.id, outcome })
+    outcomes.push(outcome)
   }
   return outcomes
 }

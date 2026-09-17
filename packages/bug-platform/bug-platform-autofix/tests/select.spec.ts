@@ -52,6 +52,20 @@ describe('selectTickets', () => {
     expect(selected).toEqual([])
   })
 
+  it('keeps tickets assigned to alsoAssignedTo ids', () => {
+    const selected = selectTickets(
+      [
+        ticket({ id: 1, assignee_id: 68 }),
+        ticket({ id: 2, assignee_id: 9 }),
+        ticket({ id: 3, assignee_id: null }),
+      ],
+      index,
+      new TicketStateStore(),
+      { alsoAssignedTo: [68] },
+    )
+    expect(selected.map(t => t.id)).toEqual([1, 3])
+  })
+
   it('drops tickets outside the status allow-list', () => {
     const selected = selectTickets(
       [ticket({ id: 1, status: '处理中' })],

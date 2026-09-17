@@ -77,6 +77,16 @@ export class TicketStateStore {
   }
 
   /**
+   * Drop the local record for a ticket id (no-op when absent).
+   * Used by ops tooling that reopens platform status for a fresh autofix pick.
+   * @param ticketId - platform ticket id.
+   * @returns true when a record was removed.
+   */
+  remove(ticketId: number): boolean {
+    return this.byId.delete(ticketId)
+  }
+
+  /**
    * @returns a stable snapshot of all records for serialization.
    */
   list(): TicketRecord[] {

@@ -4,31 +4,43 @@
 
 ## 环境变量
 
-在仓库根目录的 shell 中设置（**勿写入仓库、勿提交密钥**）：
+脚本启动时会**优先**加载 harness 根目录的 `.env`（覆盖同名进程环境变量）；文件缺失时再退回 ambient env。
+
+可复制模板：
+
+```powershell
+Copy-Item .env.example .env
+# 编辑 .env，填入 BUG_PLATFORM_USERNAME / BUG_PLATFORM_PASSWORD / DEEPSEEK_API_KEY 等
+```
 
 | 变量 | 必填 | 说明 |
 |------|------|------|
 | `BUG_PLATFORM_USERNAME` | 是 | Bug 平台登录用户名 |
 | `BUG_PLATFORM_PASSWORD` | 是 | Bug 平台登录密码 |
-| `DEEPSEEK_API_KEY` | 是 | headless agent 调模型 |
+| `DEEPSEEK_API_KEY` | 是 | headless agent 调模型（`reset-to-pending` 不需要） |
 | `BUG_PLATFORM_BASE_URL` | 否 | 默认 `http://10.20.183.62:8080` |
 | `GITLAB_TOKEN` | 否 | GitLab `PRIVATE-TOKEN`；无 Token 时仍可本地 commit，但不会开 MR |
 
-可选覆盖路径：`BUG_PLATFORM_MAPPING_FILE`、`BUG_PLATFORM_STATE_FILE`、`BUG_PLATFORM_ASSETS_DIR`。
+可选覆盖路径：`BUG_PLATFORM_MAPPING_FILE`、`BUG_PLATFORM_STATE_FILE`、`BUG_PLATFORM_ASSETS_DIR`、`BUG_PLATFORM_PROGRESS_FILE`（默认 `…/.dsh-bugfix/progress.json`）。
 视觉预跑（有截图时）：使用同一 `DEEPSEEK_API_KEY`；可选 `DEEPSEEK_BASE_URL`、`BUG_PLATFORM_VISION_MODEL`（默认 `deepseek-flash`）。观察结果写入 agent brief 的「截图观察（模型视觉）」节。
+
+### 进度可见性
+
+跑批会在终端打印队列、`[i/n] 开始/结束 #id`，并每隔 30s 心跳「仍在处理 #id」；同时写入 `progress.json`（`current` / `pending` / `completed`）。另开终端可查看：
+
+```powershell
+Get-Content D:\CODE\COMPANY\dkh-bugFix-project\.dsh-bugfix\progress.json
+```
 
 ### Windows：从用户环境读取 `GITLAB_TOKEN`
 
-若 Token 写在「用户」环境变量里，当前 PowerShell 可能尚未继承，可先同步到进程：
+若 Token 写在「用户」环境变量里且未写入 `.env`，当前 PowerShell 可能尚未继承，可先同步到进程：
 
 ```powershell
 $env:GITLAB_TOKEN = [System.Environment]::GetEnvironmentVariable('GITLAB_TOKEN', 'User')
-$env:BUG_PLATFORM_USERNAME = '…'
-$env:BUG_PLATFORM_PASSWORD = '…'
-$env:DEEPSEEK_API_KEY = '…'
 ```
 
-本脚本只读 `process.env`，不会去读注册表；请确保启动前环境变量已进入进程。
+有 `.env` 时优先以文件为准；勿把含密钥的 `.env` 提交进 git。
 
 ## 默认路径（本机）
 
@@ -66,6 +78,10 @@ node --import tsx/esm examples/bug-platform-autofix/src/run-once.ts --max 1
 node --import tsx/esm examples/bug-platform-autofix/src/run-once.ts --max 3 --status 待确认,验证未通过,转派,转需求
 ```
 
+本脚本按平台列表**实际取回**的候选串行修复；`--continuous` 表示本批跑完立刻再拉下一批（空批短退避）。不要手写死单号除非排障用 `--tickets`。
+
+白名单默认：状态 `待确认/验证未通过/转派/转需求`，菜单有映射且非排除大屏，本地非进行中/`skipped`；**未指派或指派给当前登录用户**均可入选（避免误领回滚后仍挂在自己名下却捞不到）。
+
 ### 自动流水（守护）
 
 **推荐：连续批处理**（批内串行修完立刻拉下一批，不按固定时钟）：
@@ -93,6 +109,21 @@ node --import tsx/esm examples/bug-platform-autofix/src/run-once.ts --max 1 --po
 4. 守护模式也可用任务「开机启动一次」+ `--poll-interval`；不要同时开多个守护进程抢同一 `state.json`／产品工作区。
 
 `--ticket` / `--tickets` 走强制路径（绕过列表**状态**白名单），仍会排除 `网络安全数据大屏`／`网络安全指挥大屏`、home、无映射；**不能**与 `--max` / `--status` / `--poll-interval` 同用；`--ticket` 与 `--tickets` 也互斥。本地 `state.json` 中仍处于进行中 phase 的单会跳过。`--max` 只影响白名单跑批。
+
+### 运维：误领单改回「待确认」
+
+不跑 agent。对指定单（或本地 `state.json` 中 `phase=failed` 的单）写跟进：`status_change=待确认`，并删除对应本地 state 记录，便于白名单重新领单。
+
+```powershell
+# 自动挑选 state.json 里 phase=failed 的单
+node --import tsx/esm examples/bug-platform-autofix/src/reset-to-pending.ts
+
+# 指定单号 + 可选自定义说明（默认：因工作区未就绪误领，已改回待确认，可重新自动修复）
+node --import tsx/esm examples/bug-platform-autofix/src/reset-to-pending.ts --tickets 428,430,441
+node --import tsx/esm examples/bug-platform-autofix/src/reset-to-pending.ts --tickets 428 --note "自定义说明"
+```
+
+需要 `BUG_PLATFORM_USERNAME` / `BUG_PLATFORM_PASSWORD`（可选 `BUG_PLATFORM_BASE_URL`、`BUG_PLATFORM_STATE_FILE`）。
 
 ## 安全
 

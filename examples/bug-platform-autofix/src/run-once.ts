@@ -22,10 +22,13 @@ import {
   type TicketStateStore,
 } from '@deepseek-ai/dsh-bug-platform-autofix'
 import { parseRunOnceArgs, DEFAULT_EMPTY_BATCH_BACKOFF_SECONDS } from './cli-args.ts'
+import { BatchProgress } from './batch-progress.ts'
+import { loadRepoEnv } from './load-repo-env.ts'
 import { runPollLoop } from './poll-loop.ts'
 
 /** deepseek-harness worktree root (parent of `examples/`). */
 const HARNESS_ROOT = fileURLToPath(new URL('../../..', import.meta.url))
+loadRepoEnv(HARNESS_ROOT)
 
 /**
  * headless typert-loader loads package `exports["./typert"]` → `lib/typert.host.js`.
@@ -52,6 +55,7 @@ const PROJECT_ROOT = 'D:/CODE/COMPANY/dkh-bugFix-project'
 
 const DEFAULT_MAPPING_FILE = join(PROJECT_ROOT, 'menu-mapping.json')
 const DEFAULT_STATE_FILE = join(PROJECT_ROOT, '.dsh-bugfix', 'state.json')
+const DEFAULT_PROGRESS_FILE = join(PROJECT_ROOT, '.dsh-bugfix', 'progress.json')
 /** Per-ticket assets land at `<assetsDir>/<ticketId>/` (orchestrator contract). */
 const DEFAULT_ASSETS_DIR = join(PROJECT_ROOT, '.dsh-bugfix')
 
@@ -117,6 +121,7 @@ function sleep(ms: number): Promise<void> {
  * Run one whitelist batch round and persist local state.
  * @param config - orchestrator config (mutates `stateStore` in place).
  * @param statePath - path for {@link saveState}.
+ * @param progressPath - path for {@link BatchProgress} snapshot.
  * @param maxTickets - batch size.
  * @param status - optional list status override.
  * @returns number of tickets attempted in this round.
@@ -124,21 +129,34 @@ function sleep(ms: number): Promise<void> {
 async function runWhitelistRound(
   config: OrchestratorConfig,
   statePath: string,
+  progressPath: string,
   maxTickets: number,
   status: string | undefined,
 ): Promise<number> {
   process.stdout.write(
     `按白名单选单跑批（最多 ${maxTickets} 单${status === undefined ? '' : `，status=${status}`}）…\n`,
   )
+  let progress: BatchProgress | undefined
   const batchOutcomes = await runBatch(config, {
     maxTickets,
     ...(status === undefined ? {} : { status }),
+    onQueue: (ids) => {
+      progress = new BatchProgress({ path: progressPath, queue: ids })
+      progress.beginRun('whitelist')
+    },
+    onTicketStart: (info) => {
+      progress?.startTicket(info.ticketId)
+    },
+    onTicketEnd: (info) => {
+      progress?.finishTicket(info.ticketId, formatOutcome(info.outcome))
+    },
   })
+  progress?.dispose()
   if (batchOutcomes.length === 0) {
     process.stdout.write('没有可处理的候选单。\n')
-  }
-  for (const outcome of batchOutcomes) {
-    process.stdout.write(`${formatOutcome(outcome)}\n`)
+    const empty = new BatchProgress({ path: progressPath, queue: [] })
+    empty.beginRun('whitelist')
+    empty.dispose()
   }
   saveState(statePath, config.stateStore)
   return batchOutcomes.length
@@ -164,6 +182,7 @@ async function main(): Promise<void> {
 
   const mappingPath = process.env['BUG_PLATFORM_MAPPING_FILE']?.trim() || DEFAULT_MAPPING_FILE
   const statePath = process.env['BUG_PLATFORM_STATE_FILE']?.trim() || DEFAULT_STATE_FILE
+  const progressPath = process.env['BUG_PLATFORM_PROGRESS_FILE']?.trim() || DEFAULT_PROGRESS_FILE
   const assetsDir = process.env['BUG_PLATFORM_ASSETS_DIR']?.trim() || DEFAULT_ASSETS_DIR
 
   const menuIndex = loadMenuMapping(JSON.parse(readFileSync(mappingPath, 'utf8')) as unknown)
@@ -213,18 +232,31 @@ async function main(): Promise<void> {
       process.stdout.write(
         `强制处理 ${ticketIds.length} 单（绕过选单白名单）：${ticketIds.join(', ')}…\n`,
       )
-      for (const ticketId of ticketIds) {
-        const record = stateStore.get(ticketId)
-        // Force path may retry `awaiting_push` / `done` / `failed` (e.g. second
-        // fix pass). Only block in-flight claim/fix phases.
-        if (record?.phase === 'claimed' || record?.phase === 'fixing') {
-          process.stdout.write(
-            `ticket ${ticketId}: 跳过（本地 phase=${record.phase} 仍在进行中，见 ${statePath}）\n`,
-          )
-          continue
+      const progress = new BatchProgress({ path: progressPath, queue: ticketIds })
+      progress.beginRun('force')
+      try {
+        for (const ticketId of ticketIds) {
+          const record = stateStore.get(ticketId)
+          // Force path may retry `awaiting_push` / `done` / `failed` (e.g. second
+          // fix pass). Only block in-flight claim/fix phases.
+          if (record?.phase === 'claimed' || record?.phase === 'fixing') {
+            const summary = `跳过（本地 phase=${record.phase} 仍在进行中，见 ${statePath}）`
+            progress.startTicket(ticketId)
+            progress.finishTicket(ticketId, summary)
+            continue
+          }
+          progress.startTicket(ticketId)
+          try {
+            const outcome = await runOneTicket(config, ticketId)
+            progress.finishTicket(ticketId, formatOutcome(outcome))
+          } catch (error) {
+            const message = error instanceof Error ? error.message : String(error)
+            progress.finishTicket(ticketId, `failed: ${message}`)
+            throw error
+          }
         }
-        const outcome = await runOneTicket(config, ticketId)
-        process.stdout.write(`ticket ${ticketId}: ${formatOutcome(outcome)}\n`)
+      } finally {
+        progress.dispose()
       }
       return
     }
@@ -242,7 +274,7 @@ async function main(): Promise<void> {
           runRound: async () => {
             const roundStore = loadState(statePath)
             const roundConfig: OrchestratorConfig = { ...config, stateStore: roundStore }
-            return await runWhitelistRound(roundConfig, statePath, maxTickets, status)
+            return await runWhitelistRound(roundConfig, statePath, progressPath, maxTickets, status)
           },
           sleep,
           delayMsAfterRound: (processed) => {
@@ -279,7 +311,7 @@ async function main(): Promise<void> {
       return
     }
 
-    await runWhitelistRound(config, statePath, maxTickets, status)
+    await runWhitelistRound(config, statePath, progressPath, maxTickets, status)
   } finally {
     saveState(statePath, stateStore)
   }

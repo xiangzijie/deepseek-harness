@@ -603,4 +603,38 @@ describe('runBatch', () => {
     expect(order[0]).toBe('ensureToken')
     expect(order.filter(s => s.startsWith('getTicket:'))).toHaveLength(1)
   })
+
+  it('invokes onQueue / onTicketStart / onTicketEnd in order', async () => {
+    const rows = [
+      detail({ id: 1, target_menu: '资产核查', status: '待确认' }),
+      detail({ id: 2, target_menu: '资产核查', status: '待确认' }),
+    ]
+    const { client } = fakeClient({
+      listTickets: async () => rows,
+      getTicket: async id => rows.find(r => r.id === id)!,
+    })
+    const agentRunner: AgentRunner = async () => ({ ok: false, summary: 'batch-stop' })
+    const events: string[] = []
+
+    await runBatch(baseConfig({ client, agentRunner, runGit: cleanCustomGit() }), {
+      maxTickets: 2,
+      onQueue: (ids) => {
+        events.push(`queue:${[...ids].join(',')}`)
+      },
+      onTicketStart: (info) => {
+        events.push(`start:${info.index}/${info.total}#${info.ticketId}`)
+      },
+      onTicketEnd: (info) => {
+        events.push(`end:${info.index}/${info.total}#${info.ticketId}:${info.outcome.kind}`)
+      },
+    })
+
+    expect(events).toEqual([
+      'queue:1,2',
+      'start:1/2#1',
+      'end:1/2#1:failed',
+      'start:2/2#2',
+      'end:2/2#2:failed',
+    ])
+  })
 })

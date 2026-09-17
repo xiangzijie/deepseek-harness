@@ -48,14 +48,20 @@ export interface SelectTicketsOptions {
    * Use an explicit list (e.g. `['处理中']`) to force-select atypical statuses.
    */
   statuses?: readonly string[]
+  /**
+   * In addition to `assignee_id == null`, also keep tickets whose assignee is
+   * one of these user ids (e.g. the logged-in autofix operator after a claim
+   * auto-assigned them).
+   */
+  alsoAssignedTo?: readonly number[]
 }
 
 /**
- * Filter list rows to unassigned, status-allowed, mapped, non-active candidates.
+ * Filter list rows to unassigned (or self-assigned), status-allowed, mapped, non-active candidates.
  * @param tickets - platform list rows (or compatible summaries).
  * @param index - menu mapping index from {@link loadMenuMapping}.
  * @param store - local idempotency store; active and pre-claim `skipped` phases are skipped.
- * @param options - optional status allow-list override.
+ * @param options - optional status allow-list and self-assignee ids.
  * @returns tickets that pass every selection rule, in input order.
  */
 export function selectTickets(
@@ -65,8 +71,9 @@ export function selectTickets(
   options?: SelectTicketsOptions,
 ): SelectableTicket[] {
   const statuses = new Set(options?.statuses ?? DEFAULT_ELIGIBLE_STATUSES)
+  const alsoAssignedTo = new Set(options?.alsoAssignedTo ?? [])
   return tickets.filter((ticket) => {
-    if (ticket.assignee_id !== null) {
+    if (ticket.assignee_id !== null && !alsoAssignedTo.has(ticket.assignee_id)) {
       return false
     }
     if (!statuses.has(ticket.status)) {

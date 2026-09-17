@@ -33,6 +33,7 @@ export class BugPlatformClient {
   private readonly password: string
   private readonly fetchImpl: typeof fetch
   private token: string | undefined
+  private loggedInUserId: number | undefined
 
   /**
    * @param opts - resolved base URL, username, password, and optional `fetch` inject.
@@ -42,6 +43,14 @@ export class BugPlatformClient {
     this.username = opts.username
     this.password = opts.password
     this.fetchImpl = opts.fetchImpl ?? fetch
+  }
+
+  /**
+   * Platform user id from the last successful login, when the payload included it.
+   * @returns integer user id, or `undefined` before login / when absent.
+   */
+  getLoggedInUserId(): number | undefined {
+    return this.loggedInUserId
   }
 
   /**
@@ -111,9 +120,12 @@ export class BugPlatformClient {
     await writeFile(destPath, buffer)
   }
 
-  /** Perform login, store token, and return it. */
+  /** Perform login, store token (and user id when present), and return the token. */
   private async login(): Promise<string> {
-    const payload = await this.parseSuccess<{ token: unknown }>(
+    const payload = await this.parseSuccess<{
+      token: unknown
+      user?: { id?: unknown }
+    }>(
       await this.fetchImpl(`${this.baseUrl}/api/auth/login`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
@@ -125,6 +137,9 @@ export class BugPlatformClient {
       throw new Error('bug-platform-http: login response missing data.token')
     }
     this.token = payload.token
+    const userId = payload.user?.id
+    this.loggedInUserId =
+      typeof userId === 'number' && Number.isInteger(userId) ? userId : undefined
     return payload.token
   }
 

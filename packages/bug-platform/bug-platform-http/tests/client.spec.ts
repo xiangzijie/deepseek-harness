@@ -15,8 +15,8 @@ function jsonResponse(body: unknown, init: ResponseInit = {}): Response {
   })
 }
 
-function loginOk(token = 'tok-1'): Response {
-  return jsonResponse({ success: true, data: { token } })
+function loginOk(token = 'tok-1', userId = 68): Response {
+  return jsonResponse({ success: true, data: { token, user: { id: userId, username: 'alice' } } })
 }
 
 function listOk(list: unknown[]): Response {
@@ -51,7 +51,9 @@ describe('BugPlatformClient.ensureToken', () => {
       return loginOk('session-token')
     })
 
-    await expect(client(fetchImpl).ensureToken()).resolves.toBe('session-token')
+    const c = client(fetchImpl)
+    await expect(c.ensureToken()).resolves.toBe('session-token')
+    expect(c.getLoggedInUserId()).toBe(68)
     expect(fetchImpl).toHaveBeenCalledTimes(1)
   })
 

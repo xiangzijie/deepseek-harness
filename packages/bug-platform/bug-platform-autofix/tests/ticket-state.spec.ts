@@ -78,6 +78,13 @@ describe('TicketStateStore load/save/get/upsert', () => {
     expect(store.get(428)?.updatedAt).toBe('2026-09-09T11:00:00.000Z')
   })
 
+  it('remove drops a stored ticket and is a no-op when absent', () => {
+    const store = new TicketStateStore([sampleRecord()])
+    expect(store.remove(428)).toBe(true)
+    expect(store.get(428)).toBeUndefined()
+    expect(store.remove(428)).toBe(false)
+  })
+
   it('rejects invalid on-disk JSON', () => {
     const path = tempStatePath()
     writeFileSync(path, '{"tickets":"nope"}', 'utf8')
