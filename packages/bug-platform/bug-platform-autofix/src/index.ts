@@ -14,6 +14,17 @@ import z from '@deepseek-ai/schemastery'
 export type { MenuMappingIndex, MenuMappingItem, ResolvedMenu } from './menu-mapping.ts'
 export { loadMenuMapping, resolveMenu } from './menu-mapping.ts'
 
+export type {
+  MappingRepo,
+  OperatorBugPlatformConfig,
+  OperatorConfig,
+  OperatorGitlabConfig,
+  OperatorRunConfig,
+  OperatorSkillsConfig,
+  OperatorWorkspace,
+} from './operator-config.ts'
+export { loadOperatorConfig } from './operator-config.ts'
+
 export type { SelectableTicket, SelectTicketsOptions } from './select.ts'
 export {
   DEFAULT_ELIGIBLE_STATUSES,

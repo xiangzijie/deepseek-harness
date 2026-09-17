@@ -1,0 +1,38 @@
+harnessRoot: 'D:/CODE/COMPANY/deepseek-harness/.worktrees/bug-platform-autofix'
+bugPlatform:
+  baseUrl: 'http://10.20.183.62:8080'
+  projectId: 47
+gitlab:
+  host: 'http://gitlab.info.dbappsecurity.com.cn'
+  tokenEnv: GITLAB_TOKEN
+mappingFile: 'D:/CODE/COMPANY/dkh-bugFix-project/menu-mapping.json'
+stateFile: 'D:/CODE/COMPANY/dkh-bugFix-project/.dsh-bugfix/state.json'
+progressFile: 'D:/CODE/COMPANY/dkh-bugFix-project/.dsh-bugfix/progress.json'
+assetsDir: 'D:/CODE/COMPANY/dkh-bugFix-project/.dsh-bugfix'
+workspaces:
+  - id: custom
+    localRoot: 'D:/CODE/COMPANY/dkh-bugFix-project/dkh-custom'
+    gitlabProjectId: 8325
+    productBranch: 'dkh-custom-jinan'
+    mappingRepo: custom
+  - id: ailpha
+    localRoot: 'D:/CODE/COMPANY/dkh-bugFix-project/dkh-ailpha'
+    gitlabProjectId: 8325
+    productBranch: 'dkh-ailpha-jinan'
+    mappingRepo: ailpha
+  - id: home
+    localRoot: 'D:/CODE/COMPANY/dkh-bugFix-project/dkh-home'
+    gitlabProjectId: 8325
+    productBranch: 'dkh-home-jinan'
+    mappingRepo: home
+    autofix: false
+skills:
+  globalRepo: 'git@gitlab.info.dbappsecurity.com.cn:jgts/autofix-skills.git'
+  globalLocal: 'D:/CODE/COMPANY/dkh-bugFix-project/autofix-skills'
+  personalRoot: 'D:/CODE/COMPANY/dkh-bugFix-project/.dsh-bugfix/personal-skills'
+  forceMaxCount: 3
+  forceMaxChars: 8000
+run:
+  maxTickets: 1
+  lintEnabled: false
+  buildEnabled: false
