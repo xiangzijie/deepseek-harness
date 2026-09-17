@@ -17,6 +17,18 @@ Ship a **hybrid two-package, library-first** layout under `packages/bug-platform
 
 A full Service Definition / Provider / Consumer seam and installable bundle remain deferred. Phase-1 merge policy is **auto-fix + human merge**; high-confidence auto-merge remains deferred and must record its judgment basis. Experience capture remains deferred.
 
+### Configuration authority
+
+`operator.yaml` is the configuration authority for workspace paths, GitLab host and per-workspace `gitlabProjectId`, mapping / state / progress / assets paths, skill roots, and run tunables. `run-once` and `reset-to-pending` require `--config` or `BUG_PLATFORM_OPERATOR_FILE` and fail when the file is missing. Secrets stay in environment variables / `.env`. Pilot absolute paths live only in `operator.example.yaml`, not as TypeScript defaults.
+
+The operator console is a separate git repository: it is not a harness package and not a `dsh web` bundle. CLI and console read the same `operator.yaml`.
+
+### Three skill layers
+
+Headless sees three layers, personal > in-repo > global: `join(personalRoot, operatorId)` via the rank-50 `autofix-personal` provider, `<localRoot>/.agents/skills` and `<localRoot>/.dsh/skills` (skill-filesystem ranks 100/200), and `globalLocal/skills` via `customSkillDirs` (rank 300). Same-name catalog/tool discovery follows that order. Forced global bodies still inject into the brief even when a higher layer overrides the catalog name.
+
+The global clone is GitLab `jgts/autofix-skills`, independent of product repos. Duty machines clone it to `skills.globalLocal`. Protect `main`; `force: true` changes land through that skill repo's MR. Copy [`examples/bug-platform-autofix/skill-repo-template/`](../../../examples/bug-platform-autofix/skill-repo-template/README.md) to create the remote.
+
 ### Worktrees and mapping
 
 Each local root (`dkh-custom`, `dkh-ailpha`, `dkh-home`) binds one product jinan and its own `gitlabProjectId`. Mapping resolves a single `localRoot`; all edit / lint / commit / push / MR work stays in that directory. `ensureMergeRequest` uses that workspace's `gitlabProjectId`. Helpers never cross-checkout another product `*-jinan` into the wrong root; wrong HEAD hard-fails instead of auto-correcting. `createBugfixBranch` checks out the bound jinan before `checkout -b` so new ticket branches do not stack on a prior `bugfix/*` tip. A workspace with `autofix: false` is excluded at `selectTickets` time so whitelist batches never occupy `maxTickets` with it. Force `--ticket` still runs `runOneTicket`, which skips after mapping with a followup (`status_change` null) and no `处理中` claim.
@@ -65,6 +77,14 @@ When autofix later runs inside a session-backed agent, the agent brief is model-
 
 **Default auto-merge of MRs.** Rejected; human merge is the default. Optional high-confidence auto-merge later must record judgment basis.
 
+**Hardcode duty-machine paths in TypeScript.** Rejected because workspace roots, GitLab ids, and skill clones vary per machine; `operator.yaml` is the authority and a missing file fails loud.
+
+**Ship the operator console inside harness or `dsh web`.** Rejected because the console is a business UI over this library; it belongs in a separate repository that shares `operator.yaml` with the CLI.
+
+**Depend on the model calling a skill tool for force rules.** Rejected because force rules must apply even when the model never invokes a skill tool; orchestration injects matching `SKILL.md` bodies into the brief.
+
+**Keep global skills inside a product worktree.** Rejected because product jinan and force-policy have independent remotes and protected branches; mixing them couples unrelated MRs. The skill clone is `jgts/autofix-skills`.
+
 ## Consequences
 
-Phase 1 delivers a manually triggered library-first path that has opened real GitLab MRs and written platform followups, at the cost of deferred polling, concurrency, full seam packaging, session-logged briefs, and experience capture. Two `run-once` processes that share a `progressFile` cannot overlap: the second live pid fails before claim. Skipping lint/build can push broken diffs until operators enable path-scoped lint. Re-fix updates platform and MR records, but wrong product merges still require human review before landing on jinan.
+Operators run from `operator.yaml` (one-shot, `--poll-interval`, or `--continuous`); forced global skills inject into the agent brief; the console is not in this repository. The path has opened real GitLab MRs and written platform followups, at the cost of deferred concurrency, full seam packaging, session-logged briefs, and experience capture. Two `run-once` processes that share a `progressFile` cannot overlap: the second live pid fails before claim. Skipping lint/build can push broken diffs until operators enable path-scoped lint. Re-fix updates platform and MR records, but wrong product merges still require human review before landing on jinan.

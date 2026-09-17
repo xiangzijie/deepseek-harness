@@ -10,6 +10,15 @@
 
 `run-once` 要求 yaml 里同时有 `mappingRepo` 为 `custom`、`ailpha`、`home` 的三条工作区。未传 `--max` 时使用 yaml 的 `run.maxTickets`。
 
+## 操作约定
+
+- 始终用 `--config <path>`（或环境变量 `BUG_PLATFORM_OPERATOR_FILE`）指向控制台仓／值班目录的 `operator.yaml`；两者都缺则失败。
+- 同一 `progressFile` 同时只允许一个 `run-once`：互斥文件是 `dirname(progressFile)/run.lock`。第二个存活进程以 `已有跑批（pid=<n>），progressFile=<path>` 失败。
+- `--allow-stale-global-skills` 只允许全局 skill 仓 HEAD 落后 `origin/main` 仍开跑；强制 skill 文件或 `manifest.yaml` 有未提交变更时仍拒绝。
+- 禁止在产品仓（`dkh-custom` / `dkh-ailpha` / `dkh-home`）内执行 `pnpm dsh`。headless 必须从 yaml `harnessRoot` 启动 harness `apps/cli`，cwd 才是映射到的产品工作区。
+
+全局 skill 仓模板见 [`skill-repo-template/`](./skill-repo-template/README.md)：在 GitLab 建独立项目 `jgts/autofix-skills`，值班机 clone 到 yaml `skills.globalLocal`；保护 `main`，强制变更走 MR。
+
 ## 环境变量
 
 脚本启动时会**优先**加载 harness 根目录的 `.env`（覆盖同名进程环境变量）；文件缺失时再退回 ambient env。
@@ -52,7 +61,7 @@ $env:GITLAB_TOKEN = [System.Environment]::GetEnvironmentVariable('GITLAB_TOKEN',
 
 前置：本 worktree 需要先有一次 `pnpm run build`（或至少 `pnpm run build:lib`）。headless 的 typert-loader 从各包 `exports["./typert"]` 加载 **已构建的** `lib/typert.host.js`。
 
-在 **deepseek-harness 仓库根**（本 worktree 根）执行。Agent 会从 yaml `harnessRoot` 启动 `apps/cli`（`dsh --profile headless`），并把 **cwd 设为映射到的产品工作区**；不要在 `dkh-custom` / `dkh-ailpha` 里找 `dsh`。
+在 **deepseek-harness 仓库根**（本 worktree 根）执行。Agent 会从 yaml `harnessRoot` 启动 `apps/cli`（`dsh --profile headless`），并把 **cwd 设为映射到的产品工作区**；禁止在产品仓内执行 `pnpm dsh`。
 
 Windows 上若 `pnpm run` 因 lefthook postinstall 锁失败：删掉仓库 `.git/dsh-lefthook-install.lock` 后重试，或用下面的 `node` 入口（仍需先 build）：
 

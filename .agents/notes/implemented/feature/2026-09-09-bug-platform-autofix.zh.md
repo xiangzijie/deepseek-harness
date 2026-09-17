@@ -17,6 +17,18 @@ Status: implemented
 
 完整的 Service Definition／Provider／Consumer seam 与可安装 bundle 仍推迟。一期合入策略为**自动修 + 人工合**；高确信度自动合仍推迟且须记录判定依据。经验沉淀仍推迟。
 
+### 配置权威
+
+`operator.yaml` 是工作区路径、GitLab host 与各工作区 `gitlabProjectId`、映射／状态／进度／附件路径、skill 根目录与跑批可选项的配置权威。`run-once` 与 `reset-to-pending` 要求 `--config` 或 `BUG_PLATFORM_OPERATOR_FILE`，缺文件则失败。密钥只来自环境变量／`.env`。试点绝对路径只出现在 `operator.example.yaml`，不是 TypeScript 默认常量。
+
+操作控制台是独立 git 仓：不是 harness 包，也不是 `dsh web` bundle。CLI 与控制台读同一份 `operator.yaml`。
+
+### 三层 skill
+
+Headless 看到三层，个人 > 仓内 > 全局：`join(personalRoot, operatorId)` 经 rank=50 的 `autofix-personal` 提供方，`<localRoot>/.agents/skills` 与 `<localRoot>/.dsh/skills`（skill-filesystem rank 100/200），以及 `globalLocal/skills` 经 `customSkillDirs`（rank 300）。同名 catalog／工具发现按该顺序。即使更高层覆盖了 catalog 名，强制全局正文仍注入 brief。
+
+全局 clone 是 GitLab `jgts/autofix-skills`，独立于产品仓。值班机 clone 到 `skills.globalLocal`。保护 `main`；`force: true` 的变更经该 skill 仓的 MR 合入。创建远程时拷贝 [`examples/bug-platform-autofix/skill-repo-template/`](../../../examples/bug-platform-autofix/skill-repo-template/README.md)。
+
 ### 工作区与映射
 
 每个本地根目录（`dkh-custom`、`dkh-ailpha`、`dkh-home`）各自绑定一条产品 jinan 与自己的 `gitlabProjectId`。映射只决议一个 `localRoot`；修改／lint／commit／push／MR 均只在该目录进行。`ensureMergeRequest` 使用该工作区的 `gitlabProjectId`。辅助函数禁止跨目录把另一条产品 `*-jinan` checkout 进错误根目录；错误 HEAD 硬失败，不做自动纠正。`createBugfixBranch` 在 `checkout -b` 前先 checkout 绑定 jinan，避免新单叠在上一单 `bugfix/*` 上。工作区 `autofix: false` 在 `selectTickets` 时被排除，白名单跑批不会占用 `maxTickets`。强制 `--ticket` 仍走 `runOneTicket`，映射后跳过并写跟进（`status_change` 空），不领 `处理中`。
@@ -65,6 +77,14 @@ Status: implemented
 
 **默认自动合入 MR。** 否决；默认人工合。后续高确信度自动合必须记录判定依据。
 
+**在 TypeScript 里写死值班机路径。** 否决：工作区根、GitLab id 与 skill clone 随机器变化；`operator.yaml` 才是权威，缺文件则失败。
+
+**把操作控制台做进 harness 或 `dsh web`。** 否决：控制台是本库之上的业务 UI，属于独立仓，与 CLI 共享 `operator.yaml`。
+
+**依赖模型自行调用 skill 工具来执行强制规则。** 否决：即使模型从不调用 skill 工具，强制规则也必须生效；编排把命中的 `SKILL.md` 正文注入 brief。
+
+**把全局 skill 放进产品工作区。** 否决：产品 jinan 与强制策略各有远程与保护分支，混放会把无关 MR 绑在一起。skill clone 是 `jgts/autofix-skills`。
+
 ## 后果
 
-一期交付可手动触发的库优先路径，已能开出真实 GitLab MR 并回写平台 followup；代价是轮询、并发、完整 seam、session 记录的 brief 与经验沉淀仍推迟。共享同一 `progressFile` 的两个 `run-once` 进程不能重叠：第二个存活 pid 在领单前失败。默认跳过 lint／build 可能推送损坏 diff，需操作员开启按路径 lint。再次修单会更新平台与 MR 记录，但错误产品合入仍须人审后再进 jinan。
+操作员凭 `operator.yaml` 开跑（一次性、`--poll-interval` 或 `--continuous`）；强制全局 skill 注入 agent brief；控制台不在本仓库。该路径已能开出真实 GitLab MR 并回写平台 followup；代价是并发、完整 seam、session 记录的 brief 与经验沉淀仍推迟。共享同一 `progressFile` 的两个 `run-once` 进程不能重叠：第二个存活 pid 在领单前失败。默认跳过 lint／build 可能推送损坏 diff，需操作员开启按路径 lint。再次修单会更新平台与 MR 记录，但错误产品合入仍须人审后再进 jinan。
