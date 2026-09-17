@@ -8,22 +8,31 @@ export interface ResetToPendingArgs {
    * Explicit ticket ids. Empty means pick `phase=failed` from local state.
    */
   ticketIds: number[]
+  /**
+   * Path from `--config`. Omitted flag leaves this undefined; the caller
+   * resolves `--config` vs env `BUG_PLATFORM_OPERATOR_FILE`.
+   */
+  configPath?: string
   /** Follow-up note body (default applied by the caller when omitted). */
   note?: string
 }
 
 /**
- * Parse `--tickets` and `--note` from `process.argv`-style args.
+ * Parse `--config`, `--tickets`, and `--note` from `process.argv`-style args.
  * @param argv - full argv including node and script path.
  * @returns normalized reset flags.
  */
 export function parseResetToPendingArgs(argv: readonly string[]): ResetToPendingArgs {
   const ticketsRaw = flagValue(argv, '--tickets')
   const noteRaw = flagValue(argv, '--note')
+  const configRaw = flagValue(argv, '--config')
 
   const ticketIds = ticketsRaw !== undefined ? parseTicketIdList(ticketsRaw) : []
 
   const result: ResetToPendingArgs = { ticketIds }
+  if (configRaw !== undefined) {
+    result.configPath = configRaw
+  }
   if (noteRaw !== undefined) {
     if (noteRaw.length === 0) {
       throw new Error('--note 需要非空字符串')

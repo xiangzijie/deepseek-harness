@@ -2,6 +2,9 @@
  * CLI argv parsing for `examples/bug-platform-autofix/run-once.ts`.
  */
 
+/** Env var naming the operator.yaml path when `--config` is omitted. */
+export const OPERATOR_CONFIG_ENV = 'BUG_PLATFORM_OPERATOR_FILE'
+
 /** Parsed flags for one run-once invocation. */
 export interface RunOnceArgs {
   /**
@@ -9,8 +12,16 @@ export interface RunOnceArgs {
    * Empty means list-selection batch mode via {@link RunOnceArgs.maxTickets}.
    */
   ticketIds: number[]
-  /** Batch size for list selection; defaults to 1. Unused when `ticketIds` is non-empty. */
-  maxTickets: number
+  /**
+   * Batch size for list selection. Omitted when `--max` is absent so the caller
+   * can use `operator.yaml` `run.maxTickets`. Unused when `ticketIds` is non-empty.
+   */
+  maxTickets?: number
+  /**
+   * Path from `--config`. Resolution against {@link OPERATOR_CONFIG_ENV} happens
+   * in {@link resolveOperatorConfigPath}, not here.
+   */
+  configPath?: string
   /** Optional comma-separated list status filter for {@link runBatch}. */
   status?: string
   /**
@@ -32,8 +43,8 @@ export interface RunOnceArgs {
 export const DEFAULT_EMPTY_BATCH_BACKOFF_SECONDS = 60
 
 /**
- * Parse `--ticket`, `--tickets`, `--max`, `--status`, `--poll-interval`, and
- * `--continuous` from `process.argv`-style args.
+ * Parse `--config`, `--ticket`, `--tickets`, `--max`, `--status`, `--poll-interval`,
+ * and `--continuous` from `process.argv`-style args.
  * Force paths (`--ticket` / `--tickets`) are mutually exclusive with `--max`,
  * `--poll-interval`, and `--continuous`.
  * @param argv - full argv including node and script path.
@@ -43,6 +54,7 @@ export function parseRunOnceArgs(argv: readonly string[]): RunOnceArgs {
   const ticketRaw = flagValue(argv, '--ticket')
   const ticketsRaw = flagValue(argv, '--tickets')
   const maxRaw = flagValue(argv, '--max')
+  const configRaw = flagValue(argv, '--config')
   const statusRaw = flagValue(argv, '--status')
   const pollRaw = flagValue(argv, '--poll-interval')
   const continuous = argv.includes('--continuous')
@@ -64,12 +76,13 @@ export function parseRunOnceArgs(argv: readonly string[]): RunOnceArgs {
     )
   }
 
-  let maxTickets = 1
+  const result: RunOnceArgs = { ticketIds }
   if (maxRaw !== undefined) {
-    maxTickets = parsePositiveInt(maxRaw, '--max')
+    result.maxTickets = parsePositiveInt(maxRaw, '--max')
   }
-
-  const result: RunOnceArgs = { ticketIds, maxTickets }
+  if (configRaw !== undefined) {
+    result.configPath = configRaw
+  }
   if (statusRaw !== undefined) {
     if (statusRaw.length === 0) {
       throw new Error('--status 需要非空字符串，例如 --status 待确认,验证未通过,转派,转需求')
@@ -103,6 +116,24 @@ export function parseRunOnceArgs(argv: readonly string[]): RunOnceArgs {
   }
 
   return result
+}
+
+/**
+ * Resolve operator.yaml: `--config` wins over env {@link OPERATOR_CONFIG_ENV}.
+ * @param configPath - parsed `--config` value, or undefined when the flag is omitted.
+ * @returns a non-empty path.
+ * @throws {Error} when both the flag and env are missing or blank.
+ */
+export function resolveOperatorConfigPath(configPath: string | undefined): string {
+  const fromFlag = configPath?.trim()
+  if (fromFlag !== undefined && fromFlag.length > 0) {
+    return fromFlag
+  }
+  const fromEnv = process.env[OPERATOR_CONFIG_ENV]?.trim()
+  if (fromEnv !== undefined && fromEnv.length > 0) {
+    return fromEnv
+  }
+  throw new Error('缺少 operator.yaml：请传 --config <path> 或设置 BUG_PLATFORM_OPERATOR_FILE')
 }
 
 /**

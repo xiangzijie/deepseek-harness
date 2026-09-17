@@ -1,12 +1,22 @@
-import { describe, expect, it } from 'vitest'
-import { parseRunOnceArgs } from '../src/cli-args.ts'
+import { afterEach, describe, expect, it } from 'vitest'
+import { parseRunOnceArgs, resolveOperatorConfigPath } from '../src/cli-args.ts'
 
 describe('parseRunOnceArgs', () => {
-  it('defaults to empty ticketIds and maxTickets 1 for list batch', () => {
+  it('defaults to empty ticketIds and omits maxTickets and configPath', () => {
     expect(parseRunOnceArgs(['node', 'run-once.ts'])).toEqual({
       ticketIds: [],
-      maxTickets: 1,
     })
+    expect(parseRunOnceArgs(['node', 'run-once.ts']).configPath).toBeUndefined()
+    expect(parseRunOnceArgs(['node', 'run-once.ts']).maxTickets).toBeUndefined()
+  })
+
+  it('parses --config', () => {
+    expect(parseRunOnceArgs(['node', 'run-once.ts', '--config', 'D:/op.yaml', '--max', '1']).configPath)
+      .toBe('D:/op.yaml')
+  })
+
+  it('rejects --config without a path', () => {
+    expect(() => parseRunOnceArgs(['node', 'run-once.ts', '--config'])).toThrow(/--config/)
   })
 
   it('parses --max for batch size', () => {
@@ -19,21 +29,18 @@ describe('parseRunOnceArgs', () => {
   it('parses --ticket into a one-element ticketIds list', () => {
     expect(parseRunOnceArgs(['node', 'run-once.ts', '--ticket', '428'])).toEqual({
       ticketIds: [428],
-      maxTickets: 1,
     })
   })
 
   it('parses --tickets as comma-separated forced ids', () => {
     expect(parseRunOnceArgs(['node', 'run-once.ts', '--tickets', '428,430,441'])).toEqual({
       ticketIds: [428, 430, 441],
-      maxTickets: 1,
     })
   })
 
   it('deduplicates --tickets while preserving order', () => {
     expect(parseRunOnceArgs(['node', 'run-once.ts', '--tickets', '1,2,1,3'])).toEqual({
       ticketIds: [1, 2, 3],
-      maxTickets: 1,
     })
   })
 
@@ -104,6 +111,35 @@ describe('parseRunOnceArgs', () => {
   it('rejects non-positive --poll-interval', () => {
     expect(() => parseRunOnceArgs(['node', 'run-once.ts', '--poll-interval', '0'])).toThrow(
       /--poll-interval/,
+    )
+  })
+})
+
+describe('resolveOperatorConfigPath', () => {
+  const original = process.env.BUG_PLATFORM_OPERATOR_FILE
+
+  afterEach(() => {
+    if (original === undefined) {
+      delete process.env.BUG_PLATFORM_OPERATOR_FILE
+    } else {
+      process.env.BUG_PLATFORM_OPERATOR_FILE = original
+    }
+  })
+
+  it('uses env when the flag is omitted', () => {
+    process.env.BUG_PLATFORM_OPERATOR_FILE = 'D:/from-env.yaml'
+    expect(resolveOperatorConfigPath(undefined)).toBe('D:/from-env.yaml')
+  })
+
+  it('prefers --config over env', () => {
+    process.env.BUG_PLATFORM_OPERATOR_FILE = 'D:/from-env.yaml'
+    expect(resolveOperatorConfigPath('D:/from-flag.yaml')).toBe('D:/from-flag.yaml')
+  })
+
+  it('throws when both flag and env are missing', () => {
+    delete process.env.BUG_PLATFORM_OPERATOR_FILE
+    expect(() => resolveOperatorConfigPath(undefined)).toThrow(
+      /缺少 operator.yaml：请传 --config <path> 或设置 BUG_PLATFORM_OPERATOR_FILE/,
     )
   })
 })

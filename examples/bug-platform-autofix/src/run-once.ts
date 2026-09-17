@@ -6,22 +6,26 @@
 import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import {
-  BugPlatformClient,
-  DEFAULT_BASE_URL,
-} from '@deepseek-ai/dsh-bug-platform-http'
+import { BugPlatformClient } from '@deepseek-ai/dsh-bug-platform-http'
 import {
   createDefaultAgentRunner,
   loadMenuMapping,
+  loadOperatorConfig,
   loadState,
   runBatch,
   runOneTicket,
   saveState,
+  type OperatorConfig,
+  type OperatorWorkspace,
   type OrchestratorConfig,
   type TicketOutcome,
   type TicketStateStore,
 } from '@deepseek-ai/dsh-bug-platform-autofix'
-import { parseRunOnceArgs, DEFAULT_EMPTY_BATCH_BACKOFF_SECONDS } from './cli-args.ts'
+import {
+  parseRunOnceArgs,
+  resolveOperatorConfigPath,
+  DEFAULT_EMPTY_BATCH_BACKOFF_SECONDS,
+} from './cli-args.ts'
 import { BatchProgress } from './batch-progress.ts'
 import { loadRepoEnv } from './load-repo-env.ts'
 import { runPollLoop } from './poll-loop.ts'
@@ -49,30 +53,6 @@ function assertHarnessBuilt(harnessRoot: string): void {
     ].join('\n'),
   )
 }
-
-/** Local product worktrees + mapping/state home (operator machine defaults). */
-const PROJECT_ROOT = 'D:/CODE/COMPANY/dkh-bugFix-project'
-
-const DEFAULT_MAPPING_FILE = join(PROJECT_ROOT, 'menu-mapping.json')
-const DEFAULT_STATE_FILE = join(PROJECT_ROOT, '.dsh-bugfix', 'state.json')
-const DEFAULT_PROGRESS_FILE = join(PROJECT_ROOT, '.dsh-bugfix', 'progress.json')
-/** Per-ticket assets land at `<assetsDir>/<ticketId>/` (orchestrator contract). */
-const DEFAULT_ASSETS_DIR = join(PROJECT_ROOT, '.dsh-bugfix')
-
-const WORKSPACE_ROOTS = {
-  custom: join(PROJECT_ROOT, 'dkh-custom'),
-  ailpha: join(PROJECT_ROOT, 'dkh-ailpha'),
-  home: join(PROJECT_ROOT, 'dkh-home'),
-} as const
-
-const PRODUCT_BRANCHES = {
-  custom: 'dkh-custom-jinan',
-  ailpha: 'dkh-ailpha-jinan',
-  home: 'dkh-home-jinan',
-} as const
-
-const GITLAB_HOST = 'http://gitlab.info.dbappsecurity.com.cn'
-const GITLAB_PROJECT_ID = 8325
 
 /**
  * @param name - required environment variable name.
@@ -115,6 +95,47 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => {
     setTimeout(resolve, ms)
   })
+}
+
+/**
+ * Require mappingRepo custom / ailpha / home workspaces from operator.yaml.
+ * @param cfg - parsed operator.yaml.
+ * @returns the three product workspaces.
+ */
+function requireProductWorkspaces(cfg: OperatorConfig): {
+  custom: OperatorWorkspace
+  ailpha: OperatorWorkspace
+  home: OperatorWorkspace
+} {
+  const custom = cfg.workspaceByMappingRepo('custom')
+  const ailpha = cfg.workspaceByMappingRepo('ailpha')
+  const home = cfg.workspaceByMappingRepo('home')
+  if (custom === undefined || ailpha === undefined || home === undefined) {
+    throw new Error('operator.yaml 必须包含 mappingRepo 为 custom、ailpha、home 的三条工作区')
+  }
+  return { custom, ailpha, home }
+}
+
+/**
+ * Read GitLab token from yaml `gitlab.tokenEnv`, then `GITLAB_TOKEN`.
+ * @param tokenEnv - env var name from operator.yaml.
+ * @returns trimmed token, or null when both are unset.
+ */
+function resolveGitlabToken(tokenEnv: string): string | null {
+  const named = process.env[tokenEnv]?.trim()
+  if (named !== undefined && named.length > 0) return named
+  const fallback = process.env['GITLAB_TOKEN']?.trim()
+  return fallback !== undefined && fallback.length > 0 ? fallback : null
+}
+
+/**
+ * Bug platform base URL: env `BUG_PLATFORM_BASE_URL` overrides yaml.
+ * @param fromYaml - `bugPlatform.baseUrl` from operator.yaml.
+ * @returns a non-empty URL.
+ */
+function resolveBugPlatformBaseUrl(fromYaml: string): string {
+  const fromEnv = process.env['BUG_PLATFORM_BASE_URL']?.trim()
+  return fromEnv !== undefined && fromEnv.length > 0 ? fromEnv : fromYaml
 }
 
 /**
@@ -165,25 +186,25 @@ async function runWhitelistRound(
 async function main(): Promise<void> {
   assertHarnessBuilt(HARNESS_ROOT)
 
-  const { ticketIds, maxTickets, status, pollIntervalSeconds, continuous } = parseRunOnceArgs(
-    process.argv,
-  )
+  const args = parseRunOnceArgs(process.argv)
+  const { ticketIds, status, pollIntervalSeconds, continuous } = args
+  const cfg = loadOperatorConfig(resolveOperatorConfigPath(args.configPath))
+  const { custom, ailpha, home } = requireProductWorkspaces(cfg)
+  const maxTickets = args.maxTickets ?? cfg.run.maxTickets
 
   const username = requireEnv('BUG_PLATFORM_USERNAME')
   const password = requireEnv('BUG_PLATFORM_PASSWORD')
   const deepseekApiKey = requireEnv('DEEPSEEK_API_KEY')
 
-  const baseUrl = process.env['BUG_PLATFORM_BASE_URL']?.trim() || DEFAULT_BASE_URL
-  // Optional: set GITLAB_TOKEN in the process env (Windows User env is fine if
-  // the shell inherits it). Never log the value.
-  const gitlabToken = process.env['GITLAB_TOKEN']?.trim() || null
+  const baseUrl = resolveBugPlatformBaseUrl(cfg.bugPlatform.baseUrl)
+  const gitlabToken = resolveGitlabToken(cfg.gitlab.tokenEnv)
   const deepseekBaseURL = process.env['DEEPSEEK_BASE_URL']?.trim()
   const visionModel = process.env['BUG_PLATFORM_VISION_MODEL']?.trim()
 
-  const mappingPath = process.env['BUG_PLATFORM_MAPPING_FILE']?.trim() || DEFAULT_MAPPING_FILE
-  const statePath = process.env['BUG_PLATFORM_STATE_FILE']?.trim() || DEFAULT_STATE_FILE
-  const progressPath = process.env['BUG_PLATFORM_PROGRESS_FILE']?.trim() || DEFAULT_PROGRESS_FILE
-  const assetsDir = process.env['BUG_PLATFORM_ASSETS_DIR']?.trim() || DEFAULT_ASSETS_DIR
+  const mappingPath = cfg.mappingFile
+  const statePath = cfg.stateFile
+  const progressPath = cfg.progressFile
+  const assetsDir = cfg.assetsDir
 
   const menuIndex = loadMenuMapping(JSON.parse(readFileSync(mappingPath, 'utf8')) as unknown)
   const stateStore: TicketStateStore = loadState(statePath)
@@ -198,16 +219,21 @@ async function main(): Promise<void> {
     client,
     menuIndex,
     stateStore,
-    workspaceRoots: { ...WORKSPACE_ROOTS },
-    productBranches: { ...PRODUCT_BRANCHES },
+    workspaceRoots: { custom: custom.localRoot, ailpha: ailpha.localRoot, home: home.localRoot },
+    productBranches: {
+      custom: custom.productBranch,
+      ailpha: ailpha.productBranch,
+      home: home.productBranch,
+    },
     gitlab: {
-      host: GITLAB_HOST,
-      projectId: GITLAB_PROJECT_ID,
+      host: cfg.gitlab.host,
+      projectId: custom.gitlabProjectId,
       token: gitlabToken,
     },
     assetsDir,
-    lintEnabled: false,
-    buildEnabled: false,
+    lintEnabled: cfg.run.lintEnabled,
+    buildEnabled: cfg.run.buildEnabled,
+    projectId: cfg.bugPlatform.projectId,
     vision: {
       apiKey: deepseekApiKey,
       ...(deepseekBaseURL === undefined || deepseekBaseURL.length === 0
@@ -216,7 +242,7 @@ async function main(): Promise<void> {
       ...(visionModel === undefined || visionModel.length === 0 ? {} : { model: visionModel }),
     },
     // Spawn harness `apps/cli` with product worktree as cwd — never `pnpm dsh` inside dkh-*.
-    agentRunner: createDefaultAgentRunner({ harnessRoot: HARNESS_ROOT }),
+    agentRunner: createDefaultAgentRunner({ harnessRoot: cfg.harnessRoot }),
   }
 
   let keepPolling = true
