@@ -10,6 +10,9 @@ import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { parse } from 'yaml'
 
+/** Copied from dsh `isSkillName`; this package does not depend on `@deepseek-ai/dsh-skill`. */
+const SKILL_NAME = /^[a-z0-9]+(?:-[a-z0-9]+)*$/
+
 /** One forced skill body destined for the agent brief. */
 export interface ForcedSkill {
   /** kebab-case name from `manifest.yaml`. */
@@ -36,9 +39,10 @@ export interface ResolveForcedSkillsOptions {
  * Collect enabled, forced skill bodies that apply to `workspaceId`.
  * @param options - clone root, workspace ids, and injection limits.
  * @returns forced skills in manifest order.
- * @throws {Error} when the manifest is missing or invalid, a forced SKILL.md is
- *   missing, count exceeds `forceMaxCount`, combined body length exceeds
- *   `forceMaxChars`, or a forced skill sets `disable-model-invocation: true`.
+ * @throws {Error} when the manifest is missing or invalid, a `skills[].name` is
+ *   not kebab-case, a forced SKILL.md is missing, count exceeds `forceMaxCount`,
+ *   combined body length exceeds `forceMaxChars`, or a forced skill sets
+ *   `disable-model-invocation: true`.
  */
 export function resolveForcedSkills(options: ResolveForcedSkillsOptions): ForcedSkill[] {
   const { globalLocal, workspaceId, autofixWorkspaceIds, forceMaxCount, forceMaxChars } = options
@@ -84,6 +88,8 @@ interface ManifestSkillEntry {
  * Read and validate `globalLocal/manifest.yaml`.
  * @param globalLocal - clone root.
  * @returns skill rows in file order.
+ * @throws {Error} when `skills[].name` is empty or not kebab-case
+ *   (`/^[a-z0-9]+(?:-[a-z0-9]+)*$/`), so `path.join(..., name)` cannot leave `skills/`.
  */
 function loadManifestEntries(globalLocal: string): ManifestSkillEntry[] {
   const manifestPath = join(globalLocal, 'manifest.yaml')
@@ -117,6 +123,9 @@ function loadManifestEntries(globalLocal: string): ManifestSkillEntry[] {
     const name = obj.name
     if (typeof name !== 'string' || name.length === 0) {
       throw new Error('skill-manifest: skills[].name must be a non-empty string')
+    }
+    if (!SKILL_NAME.test(name)) {
+      throw new Error(`skill-manifest: skills[].name must be kebab-case: ${name}`)
     }
     entries.push({
       name,

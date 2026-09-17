@@ -356,6 +356,30 @@ skills:
     ).toThrow(/workspaceIds/)
   })
 
+  it('rejects skills[].name that is not kebab-case', () => {
+    // Parent, drive-letter, nested, uppercase, and underscore names must throw at load so path.join cannot leave skills/.
+    for (const name of ['../escape', 'D:\\abs\\x', 'foo/bar', 'Fix-Frontend', 'foo_bar']) {
+      const dir = writeGlobalLocal(
+        `
+skills:
+  - name: ${JSON.stringify(name)}
+    enabled: true
+    force: true
+`,
+        {},
+      )
+      expect(() =>
+        resolveForcedSkills({
+          globalLocal: dir,
+          workspaceId: 'custom',
+          autofixWorkspaceIds: ['custom'],
+          forceMaxCount: 3,
+          forceMaxChars: 8000,
+        }),
+      ).toThrow(/kebab-case/)
+    }
+  })
+
   it('throws when forced frontmatter is not an object or has no closing fence', () => {
     const dir = writeGlobalLocal(
       `

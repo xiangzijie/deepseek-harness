@@ -39,7 +39,7 @@ Status: implemented
 
 ### 强制全局 skill
 
-`runOneTicket` 在 `assessPreAgentContext` 之后、领单之前，从 `globalLocal/manifest.yaml` 解析 `force: true` 项。命中的 skill（`enabled: true`；`workspaceIds: []` 表示所有 `autofix: true` 的工作区 id）把 `skills/<name>/SKILL.md` 或 `skills/<name>.md` 正文写入 agent brief 的 `## 强制 skill（编排注入，必须遵守）`，名称列在第 2 行。模型必须遵守且不必调用 skill 工具。数量超过 `forceMaxCount`、正文合计超过 `forceMaxChars`、或强制项带 `disable-model-invocation: true` 时跳过且不写 `处理中`（`phase=skipped`）。`run-once` 把 `operator.yaml` 的 `skills.globalLocal` 与上述上限传入编排。
+`runOneTicket` 在 `assessPreAgentContext` 之后、领单之前，从 `globalLocal/manifest.yaml` 解析 `force: true` 项。命中的 skill（`enabled: true`；`workspaceIds: []` 表示所有 `autofix: true` 的工作区 id）把 `skills/<name>/SKILL.md` 或 `skills/<name>.md` 正文写入 agent brief 的 `## 强制 skill（编排注入，必须遵守）`，名称列在第 2 行。模型必须遵守且不必调用 skill 工具。`skills[].name` 必须匹配 `/^[a-z0-9]+(?:-[a-z0-9]+)*$/`（与 dsh `isSkillName` 相同，本包本地复制该正则，不依赖 `@deepseek-ai/dsh-skill`）；否则 Windows 上 `path.join(globalLocal, 'skills', name, …)` 可逃出 `skills/`（`../`、盘符绝对路径、`foo/bar`）。非法名称在加载 manifest 时抛错——不是返回空列表——编排因此 `skipUnclaimed` 且不写 `处理中`。数量超过 `forceMaxCount`、正文合计超过 `forceMaxChars`、或强制项带 `disable-model-invocation: true` 时同样跳过且不写 `处理中`（`phase=skipped`）。`run-once` 把 `operator.yaml` 的 `skills.globalLocal` 与上述上限传入编排。
 
 ### 模型可见 brief 与 session 日志
 
