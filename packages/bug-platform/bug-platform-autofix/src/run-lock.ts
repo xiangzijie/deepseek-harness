@@ -100,10 +100,8 @@ function isPidAlive(pid: number): boolean {
   } catch (error) {
     const code = (error as NodeJS.ErrnoException).code
     if (code === 'ESRCH') return false
-    /* v8 ignore start -- EPERM means the pid exists but cannot be signalled; other errno values are unexpected. */
     if (code === 'EPERM') return true
     throw error
-    /* v8 ignore stop */
   }
 }
 
@@ -123,8 +121,6 @@ function releaseRunLock(path: string, pid: number): void {
       // Lock file already gone (prior release or a crash leftover cleaned elsewhere).
       return
     }
-    /* v8 ignore start -- unlink failures other than ENOENT must surface. */
     throw error
-    /* v8 ignore stop */
   }
 }
