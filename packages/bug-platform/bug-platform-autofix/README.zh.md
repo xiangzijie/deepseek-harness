@@ -24,13 +24,13 @@
 
 ## 选单与本地状态
 
-`selectTickets(tickets, index, store, options?)` 保留：`assignee_id` 为 null、`status` 在允许列表（默认 `待确认`／`验证未通过`／`转派`／`转需求`）、`target_menu` 不是 `网络安全数据大屏`／`网络安全指挥大屏`、`resolveMenu` 有命中、且不在 `TicketStateStore` 进行中阶段（`claimed`／`fixing`／`awaiting_push`）的行。可用 `options.statuses` 覆盖允许列表。
+`selectTickets(tickets, index, store, options?)` 保留：`assignee_id` 为 null、`status` 在允许列表（默认 `待确认`／`验证未通过`／`转派`／`转需求`）、`target_menu` 不是 `网络安全数据大屏`／`网络安全指挥大屏`、`resolveMenu` 有命中、在传入 `options.workspaces` 时映射工作区不是 `autofix: false`、且不在 `TicketStateStore` 进行中阶段（`claimed`／`fixing`／`awaiting_push`）的行。可用 `options.statuses` 覆盖允许列表。`runBatch` 总会传入 workspaces，因此 `autofix: false` 的工单不占用 `maxTickets`；强制 `--ticket` 仍走 `runOneTicket`。
 
 `loadState(path)`／`saveState(path, store)` 读写 `{ tickets: TicketRecord[] }`；文件不存在时得到空的 `TicketStateStore`。`isActive(record)` 对进行中阶段为 true；`store.get`／`store.upsert` 维护内存映射。
 
 ## Git 工作区
 
-辅助函数只接受单个 `localRoot`，不会跨工作区切换产品 jinan。`assertProductBranch(localRoot, expectedJinan)` 允许该 jinan 或 `bugfix/<digits>`；若 HEAD 是另一条 `*-jinan` 则硬失败。`assertClean` 要求 porcelain 状态为空。`createBugfixBranch(localRoot, ticketId, expectedJinan)`：已在 `bugfix/<id>` 则复用；分支已存在则 checkout；否则先 checkout 到 `expectedJinan` 再 `checkout -b`，避免叠在上一单 `bugfix/*` 上。`commitAll` 执行 `add -A` + `commit` 并返回 `rev-parse HEAD`。`pushBranch` 执行 `push -u origin <branch>`。`listChangedFiles` 解析 porcelain 路径。测试可传入 `runGit(cwd, args)`；省略则使用 `defaultRunGit`。`inspectWorkspace({ localRoot, productBranch, gitlabHost, gitlabProjectId, runGit })` 仅根据本地 git 返回 `{ ok, reasons }`（目录、`.git`、HEAD、干净 porcelain、origin hostname 与 `gitlab.host`），不调用 GitLab HTTP。`run-once` 在开跑前对每个 `autofix: true` 工作区执行该检查。
+辅助函数只接受单个 `localRoot`，不会跨工作区切换产品 jinan。`assertProductBranch(localRoot, expectedJinan)` 允许该 jinan 或 `bugfix/<digits>`；若 HEAD 是另一条 `*-jinan` 则硬失败。`assertClean` 要求 porcelain 状态为空。`createBugfixBranch(localRoot, ticketId, expectedJinan)`：已在 `bugfix/<id>` 则复用；分支已存在则 checkout；否则先 checkout 到 `expectedJinan` 再 `checkout -b`，避免叠在上一单 `bugfix/*` 上。`commitAll` 执行 `add -A` + `commit` 并返回 `rev-parse HEAD`。`pushBranch` 执行 `push -u origin <branch>`。`listChangedFiles` 解析 porcelain 路径。测试可传入 `runGit(cwd, args)`；省略则使用 `defaultRunGit`。`inspectWorkspace({ localRoot, productBranch, gitlabHost, gitlabProjectId, runGit })` 仅根据本地 git 返回 `{ ok, reasons }`（目录、`.git`、HEAD、干净 porcelain、origin hostname 与 `gitlab.host`），不调用 GitLab HTTP。`inspectAutofixWorkspaces({ workspaces, gitlabHost, runGit })` 只检查 `autofix: true` 工作区，汇总 `id: 原因` 行，返回 `{ ok, lines }`。`run-once` 开跑前调用该聚合；任一失败则退出码 1。
 
 ## 可选 GitLab MR
 
@@ -38,7 +38,7 @@
 
 ## 编排
 
-`runOneTicket(config, ticketIdOrDetail)` 实现领单 → 修复 → Git 状态机。可传入已加载的 `BugTicketDetail` 强制领单（如 `--ticket 428`），绕过列表状态白名单。映射决议在任何 `处理中` followup 之前完成；无映射／home／`autofix: false` 可选 followup 且 `status_change` 为空／null，不领单。领单：`status_change=处理中`，`assignee_change=null`。领单后再下附件（跳过 `file_size === 0`）。创建 `bugfix/*`／调 agent 前，若描述过短且无截图，`assessPreAgentContext` 以 `insufficient_context` 停止（平台跟进含类别与原因；状态保持 `处理中`；`phase=failed`）。Agent brief 含停止规则；摘要含 `SKIP_AUTOFIX|<类别>|<原因>`（`insufficient_context`／`not_frontend`／`out_of_scope`）走同一停止路径。`lintEnabled`／`buildEnabled` 默认 `false`。MR 成功 → followup 保持 `处理中`（含 MR 链接与摘要），`phase=done`；本地已 commit 但 push／MR 失败 → 保持 `处理中`，`phase=awaiting_push`；修复失败／无 diff → 保持 `处理中`，`phase=failed`。自动修复**从不**标 `现场验证`。错误产品 jinan 硬失败且禁止自动 checkout。`runBatch(config, { maxTickets: 1 })` 先 `ensureToken`，再拉候选并调用 `runOneTicket` 至多 `maxTickets` 次。测试可注入 `agentRunner`、`runGit`、`ensureMr`、`addMrNote`；`buildAgentBrief`／`createDefaultAgentRunner` 负责 brief 与默认从 harness `apps/cli` 拉起 headless（需 `harnessRoot`，cwd 为产品仓）。
+`runOneTicket(config, ticketIdOrDetail)` 实现领单 → 修复 → Git 状态机。可传入已加载的 `BugTicketDetail` 强制处理（如 `--ticket 428`），绕过列表状态白名单。映射决议在任何 `处理中` followup 之前完成；无映射／home／`autofix: false` 可选 followup 且 `status_change` 为空／null，不领单。领单：`status_change=处理中`，`assignee_change=null`。映射之后、领单之前下载附件（跳过 `file_size === 0`）。领单前，若描述过短且无截图，`assessPreAgentContext` 以 `insufficient_context` 跳过且不领单（`phase=skipped`）。当设置 `config.vision` 且有截图时，`describeScreenshots` 调用官方 DeepSeek 多模态（默认 `deepseek-flash`），把观察写入 agent brief 的 `## 截图观察（模型视觉）`；视觉失败写跟进但不改状态，仍允许领单。Agent brief 含停止规则；摘要含 `SKIP_AUTOFIX|<类别>|<原因>` 在领单后走停止路径。`lintEnabled`／`buildEnabled` 默认 `false`。MR 成功 → followup 保持 `处理中`（含 MR 链接与摘要），`phase=done`；本地已 commit 但 push／MR 失败 → 保持 `处理中`，`phase=awaiting_push`；修复失败／无 diff → 保持 `处理中`，`phase=failed`。自动修复**从不**标 `现场验证`。错误产品 jinan 硬失败且禁止自动 checkout。`runBatch(config, { maxTickets: 1 })` 先 `ensureToken`，再拉候选并调用 `runOneTicket` 至多 `maxTickets` 次。测试可注入 `agentRunner`、`runGit`、`ensureMr`、`addMrNote`；`buildAgentBrief`／`createDefaultAgentRunner` 负责 brief 与默认从 harness `apps/cli` 拉起 headless（需 `harnessRoot`，cwd 为产品仓）。
 
 ## 模型体验
 

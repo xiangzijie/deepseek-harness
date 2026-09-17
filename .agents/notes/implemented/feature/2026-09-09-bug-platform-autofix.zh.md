@@ -13,13 +13,13 @@ Status: implemented
 在 `packages/bug-platform/` 下交付**混合双包、库优先**布局：
 
 - `@deepseek-ai/dsh-bug-platform-http` 负责登录、列表／详情、followup 与鉴权下载。调用方用已解析凭据构造 `BugPlatformClient`；Cordis `apply` 只校验 Config，不注册 `ctx.bugPlatform`。
-- `@deepseek-ai/dsh-bug-platform-autofix` 负责菜单映射、选单、本地幂等状态、按工作区隔离的 Git 辅助、`inspectWorkspace` 健康检查、GitLab ensure MR 与 note，以及 `runOneTicket`／`runBatch` 编排。Cordis `apply` 仍为 Config 桩；`examples/bug-platform-autofix/run-once` 直接导入辅助函数。
+- `@deepseek-ai/dsh-bug-platform-autofix` 负责菜单映射、选单、本地幂等状态、按工作区隔离的 Git 辅助、`inspectWorkspace`／`inspectAutofixWorkspaces` 健康检查、GitLab ensure MR 与 note，以及 `runOneTicket`／`runBatch` 编排。Cordis `apply` 仍为 Config 桩；`examples/bug-platform-autofix/run-once` 直接导入辅助函数。
 
 完整的 Service Definition／Provider／Consumer seam 与可安装 bundle 仍推迟。一期合入策略为**自动修 + 人工合**；高确信度自动合仍推迟且须记录判定依据。经验沉淀仍推迟。
 
 ### 工作区与映射
 
-每个本地根目录（`dkh-custom`、`dkh-ailpha`、`dkh-home`）各自绑定一条产品 jinan 与自己的 `gitlabProjectId`。映射只决议一个 `localRoot`；修改／lint／commit／push／MR 均只在该目录进行。`ensureMergeRequest` 使用该工作区的 `gitlabProjectId`。辅助函数禁止跨目录把另一条产品 `*-jinan` checkout 进错误根目录；错误 HEAD 硬失败，不做自动纠正。`createBugfixBranch` 在 `checkout -b` 前先 checkout 绑定 jinan，避免新单叠在上一单 `bugfix/*` 上。工作区 `autofix: false` 时，映射后跳过并写跟进（`status_change` 空），不领 `处理中`。
+每个本地根目录（`dkh-custom`、`dkh-ailpha`、`dkh-home`）各自绑定一条产品 jinan 与自己的 `gitlabProjectId`。映射只决议一个 `localRoot`；修改／lint／commit／push／MR 均只在该目录进行。`ensureMergeRequest` 使用该工作区的 `gitlabProjectId`。辅助函数禁止跨目录把另一条产品 `*-jinan` checkout 进错误根目录；错误 HEAD 硬失败，不做自动纠正。`createBugfixBranch` 在 `checkout -b` 前先 checkout 绑定 jinan，避免新单叠在上一单 `bugfix/*` 上。工作区 `autofix: false` 在 `selectTickets` 时被排除，白名单跑批不会占用 `maxTickets`。强制 `--ticket` 仍走 `runOneTicket`，映射后跳过并写跟进（`status_change` 空），不领 `处理中`。
 
 权威映射文件为 `menu-mapping.json`（`systems.*.items[]`）。`resolveMenu` 精确匹配 `target_menu`，只保留 `custom`／`ailpha`，优先 `file_exists`，再**优先 custom 于 ailpha**；未知、`repo == null` 或 **home** 返回 null。提报须选末端菜单；描述不参与菜单决议。默认列表状态含 `待确认`／`验证未通过`／`转派`／`转需求`；排除 `网络安全数据大屏` 与 `网络安全指挥大屏`。
 
@@ -27,7 +27,7 @@ Status: implemented
 
 `lintEnabled` 与 `buildEnabled` **默认关闭**。`GITLAB_TOKEN` 可选。无 token 或 push／ensure MR 失败时，平台保持 `处理中`，本地记 `phase=awaiting_push`。push 成功时平台状态仍为 **`处理中`**（跟进含 MR 链接），**不得**标 `现场验证`；由人工审阅合入。
 
-`run-once` 在构造编排配置之后、开跑任何工单之前，对每个 `autofix: true` 的工作区调用 `inspectWorkspace`。检查项为：目录存在、`.git` 存在、HEAD 为绑定 jinan 或 `bugfix/<digits>`、porcelain 干净、origin hostname 与 `gitlab.host` 一致。该检查不调用 GitLab HTTP API 查询项目 path。任一失败则进程退出码 1，并向 stderr 打印 `id: 原因`。
+`run-once` 在构造编排配置之后、开跑任何工单之前调用 `inspectAutofixWorkspaces`。该辅助对每个 `autofix: true` 工作区走 `inspectWorkspace`。检查项为：目录存在、`.git` 存在、HEAD 为绑定 jinan 或 `bugfix/<digits>`、porcelain 干净、origin hostname 与 `gitlab.host` 一致。该检查不调用 GitLab HTTP API 查询项目 path。任一失败则进程退出码 1，并向 stderr 打印 `id: 原因`。
 
 每次 push 成功后，编排 **ensure** MR（创建或冲突时复用）、写 MR note，并写平台 followup（`处理中`，含 MR／commit／摘要）。同一 `bugfix/<id>` 的再次修复因此仍更新平台处理记录与 MR 讨论，不会仅因「MR 已存在」失败。强制 `--ticket`／`--tickets` 可重跑 `done`／`awaiting_push`／`failed`；仅本地 `claimed`／`fixing` 会拦住。
 
