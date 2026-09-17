@@ -26,6 +26,7 @@ describe('bug-platform-autofix plugin', () => {
     expect(typeof BugPlatformAutofix.createDefaultAgentRunner).toBe('function')
     expect(typeof BugPlatformAutofix.runOneTicket).toBe('function')
     expect(typeof BugPlatformAutofix.runBatch).toBe('function')
+    expect(typeof BugPlatformAutofix.inspectWorkspace).toBe('function')
   })
 
   it('accepts fully defaulted Config in apply', () => {

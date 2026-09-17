@@ -7,6 +7,7 @@ import type {
   BugTicketDetail,
   FollowupBody,
 } from '@deepseek-ai/dsh-bug-platform-http'
+import type { OperatorWorkspace } from '../src/operator-config.ts'
 import { loadMenuMapping } from '../src/menu-mapping.ts'
 import { runBatch, runOneTicket, type OrchestratorConfig } from '../src/orchestrator.ts'
 import { TicketStateStore } from '../src/ticket-state.ts'
@@ -29,6 +30,16 @@ const mappingJson = {
           branch: 'dkh-custom-jinan',
           routeHint: '/assets/assetVerification',
           filePath: 'src/views/assetVerification/index.vue',
+          file_exists: true,
+        },
+        {
+          target_menu: '情报检索',
+          menu_path: '/intel',
+          menu_code: 'intel',
+          repo: 'ailpha',
+          branch: 'dkh-ailpha-jinan',
+          routeHint: '/intel',
+          filePath: 'src/views/intel/index.vue',
           file_exists: true,
         },
         {
@@ -154,6 +165,58 @@ function cleanCustomGit(handlers: Record<string, string | (() => string)> = {}):
     if (key.startsWith('push ')) return ''
     throw new Error(`unexpected ${key}`)
   }
+}
+
+/**
+ * Fake git whose HEAD is a given product branch (used for ailpha mapping tests).
+ * @param head - `rev-parse --abbrev-ref HEAD` stdout without newline.
+ * @param handlers - optional arg-key overrides.
+ */
+function cleanHeadGit(
+  head: string,
+  handlers: Record<string, string | (() => string)> = {},
+): RunGit {
+  return async (_cwd, args) => {
+    const key = args.join(' ')
+    if (handlers[key] !== undefined) {
+      const h = handlers[key]
+      return typeof h === 'function' ? h() : h
+    }
+    if (key === 'rev-parse --abbrev-ref HEAD') return `${head}\n`
+    if (key === 'status --porcelain') return ''
+    if (key.startsWith('branch --list ')) return ''
+    if (key.startsWith('checkout -b ')) return ''
+    if (key === 'add -A') return ''
+    if (key.startsWith('commit ')) return ''
+    if (key === 'rev-parse HEAD') return 'abc123deadbeef\n'
+    if (key.startsWith('push ')) return ''
+    throw new Error(`unexpected ${key}`)
+  }
+}
+
+/**
+ * Two-repo workspaces with distinct GitLab project ids.
+ * @param autofixCustom - custom workspace autofix flag.
+ */
+function twoRepoWorkspaces(autofixCustom = true): OperatorWorkspace[] {
+  return [
+    {
+      id: 'custom',
+      localRoot: CUSTOM_ROOT,
+      gitlabProjectId: 8325,
+      productBranch: 'dkh-custom-jinan',
+      mappingRepo: 'custom',
+      autofix: autofixCustom,
+    },
+    {
+      id: 'ailpha',
+      localRoot: AILPHA_ROOT,
+      gitlabProjectId: 9001,
+      productBranch: 'dkh-ailpha-jinan',
+      mappingRepo: 'ailpha',
+      autofix: true,
+    },
+  ]
 }
 
 describe('runOneTicket state machine', () => {
@@ -286,6 +349,118 @@ describe('runOneTicket state machine', () => {
     expect(followups[0]?.body.status_change == null || followups[0]?.body.status_change === '').toBe(true)
     expect(followups[0]?.body.content).toMatch(/home/i)
     expect(agentRunner).not.toHaveBeenCalled()
+  })
+
+  it('skips mapped workspace when autofix is false without claiming 处理中', async () => {
+    const ticket = detail({ id: 428, target_menu: '资产核查' })
+    const { client, followups, order } = fakeClient({})
+    const agentRunner = vi.fn(async () => ({ ok: true, summary: 'nope' }))
+
+    const outcome = await runOneTicket(
+      baseConfig({
+        client,
+        agentRunner,
+        workspaces: twoRepoWorkspaces(false),
+      }),
+      ticket,
+    )
+
+    expect(outcome.kind).toBe('skipped')
+    expect(followups[0]?.body.status_change == null || followups[0]?.body.status_change === '').toBe(true)
+    expect(followups[0]?.body.content).toMatch(/autofix|未开启|不在自动修复/)
+    expect(order.some(s => s.includes('处理中'))).toBe(false)
+    expect(agentRunner).not.toHaveBeenCalled()
+  })
+
+  it('skips autofix:false without writing a followup when writeSkipFollowup is false', async () => {
+    const ticket = detail({ id: 428, target_menu: '资产核查' })
+    const { client, followups } = fakeClient({})
+    const agentRunner = vi.fn(async () => ({ ok: true, summary: 'nope' }))
+
+    const outcome = await runOneTicket(
+      baseConfig({
+        client,
+        agentRunner,
+        workspaces: twoRepoWorkspaces(false),
+        writeSkipFollowup: false,
+      }),
+      ticket,
+    )
+
+    expect(outcome.kind).toBe('skipped')
+    expect(followups).toHaveLength(0)
+    expect(agentRunner).not.toHaveBeenCalled()
+  })
+
+  it('passes the mapped workspace gitlabProjectId to ensureMr', async () => {
+    const ticket = detail({ id: 777, target_menu: '情报检索' })
+    const { client } = fakeClient({})
+    const agentRunner: AgentRunner = async () => ({ ok: true, summary: 'fixed' })
+    let porcelainCalls = 0
+    const runGit = cleanHeadGit('dkh-ailpha-jinan', {
+      'status --porcelain': () => {
+        porcelainCalls += 1
+        return porcelainCalls === 1 ? '' : ' M src/views/intel/index.vue\n'
+      },
+    })
+    const ensureMr = vi.fn(async () => ({
+      webUrl: 'http://gitlab.example.com/mr/9',
+      iid: 9,
+      created: true,
+    }))
+    const addMrNote = vi.fn(async () => undefined)
+
+    const outcome = await runOneTicket(
+      baseConfig({
+        client,
+        agentRunner,
+        runGit,
+        ensureMr,
+        addMrNote,
+        workspaces: twoRepoWorkspaces(),
+      }),
+      ticket,
+    )
+
+    expect(outcome).toEqual({ kind: 'done', mrUrl: 'http://gitlab.example.com/mr/9' })
+    expect(ensureMr).toHaveBeenCalledWith(
+      expect.objectContaining({
+        projectId: 9001,
+        sourceBranch: 'bugfix/777',
+        targetBranch: 'dkh-ailpha-jinan',
+      }),
+    )
+    expect(addMrNote).toHaveBeenCalledWith(expect.objectContaining({ projectId: 9001 }))
+  })
+
+  it('skips mapped tickets when that mappingRepo workspace is omitted', async () => {
+    const ticket = detail({ id: 428, target_menu: '资产核查' })
+    const { client, followups, order } = fakeClient({})
+    const agentRunner = vi.fn(async () => ({ ok: true, summary: 'nope' }))
+
+    const outcome = await runOneTicket(
+      baseConfig({
+        client,
+        agentRunner,
+        workspaces: twoRepoWorkspaces().filter(ws => ws.mappingRepo === 'ailpha'),
+      }),
+      ticket,
+    )
+
+    expect(outcome.kind).toBe('skipped')
+    expect(followups[0]?.body.content).toMatch(/未配置工作区/)
+    expect(order.some(s => s.includes('处理中'))).toBe(false)
+    expect(agentRunner).not.toHaveBeenCalled()
+  })
+
+  it('fails loud when workspaces and gitlab.projectId are both omitted', async () => {
+    const ticket = detail({ id: 428, target_menu: '资产核查' })
+    const { client } = fakeClient({})
+    const agentRunner = vi.fn(async () => ({ ok: true, summary: 'nope' }))
+    const config = baseConfig({ client, agentRunner })
+    delete config.gitlab.projectId
+
+    await expect(runOneTicket(config, ticket)).rejects.toThrow(/workspaces/)
   })
 
   it('skips 网络安全数据大屏 even when mapped and force-loaded', async () => {

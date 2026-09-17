@@ -1,8 +1,8 @@
 /**
  * End-to-end orchestrator for one ticket / one batch (design §3).
  * Mapping is resolved before any `处理中` claim; home / unmapped /
- * {@link isExcludedTargetMenu} never claim. Context precheck runs after
- * mapping and asset download, still before claim.
+ * {@link isExcludedTargetMenu} / `autofix: false` never claim. Context precheck
+ * runs after mapping and asset download, still before claim.
  *
  * @module @deepseek-ai/dsh-bug-platform-autofix/orchestrator
  */
@@ -44,6 +44,7 @@ import {
   type MenuMappingIndex,
   type ResolvedMenu,
 } from './menu-mapping.ts'
+import type { OperatorWorkspace } from './operator-config.ts'
 import type { AgentRunner } from './run-agent.ts'
 import { isExcludedTargetMenu, selectTickets } from './select.ts'
 import type { TicketPhase, TicketStateStore } from './ticket-state.ts'
@@ -59,10 +60,15 @@ export type ProductBranches = {
   home: string
 }
 
-/** GitLab project settings for optional MR creation. */
+/** GitLab host/token for optional MR creation. Per-workspace project ids live on {@link OrchestratorConfig.workspaces}. */
 export type OrchestratorGitlabConfig = {
   host: string
-  projectId: number
+  /**
+   * Test-compat only: when {@link OrchestratorConfig.workspaces} is omitted,
+   * synthesize one project id for every {@link OrchestratorConfig.workspaceRoots} entry.
+   * Production `run-once` must pass full workspaces and omit this field.
+   */
+  projectId?: number
   token?: string | null
 }
 
@@ -87,6 +93,12 @@ export interface OrchestratorConfig {
   workspaceRoots: WorkspaceRoots
   productBranches: ProductBranches
   gitlab: OrchestratorGitlabConfig
+  /**
+   * Per-workspace GitLab project id and autofix flag. When omitted, tests
+   * synthesize from {@link OrchestratorGitlabConfig.projectId} plus
+   * {@link OrchestratorConfig.workspaceRoots} / {@link OrchestratorConfig.productBranches}.
+   */
+  workspaces?: readonly OperatorWorkspace[]
   /** Parent directory for per-ticket asset folders (`<assetsDir>/<id>/`). */
   assetsDir: string
   /** Default `false`: skip lint. */
@@ -197,6 +209,22 @@ export async function runOneTicket(
       })
     }
     return { kind: 'skipped', reason }
+  }
+
+  const workspace = workspaceForRepo(config, resolved.repo)
+  if (workspace === undefined) {
+    return skipMappedWithoutClaim(
+      config,
+      detail.id,
+      `未配置工作区 ${resolved.repo}，保持原状态`,
+    )
+  }
+  if (workspace.autofix === false) {
+    return skipMappedWithoutClaim(
+      config,
+      detail.id,
+      `${workspace.id} 未开启自动修复（autofix: false），保持原状态`,
+    )
   }
 
   const localRoot = config.workspaceRoots[resolved.repo]
@@ -352,7 +380,7 @@ export async function runOneTicket(
     const ensureMr = config.ensureMr ?? ensureMergeRequest
     const mr = await ensureMr({
       host: config.gitlab.host,
-      projectId: config.gitlab.projectId,
+      projectId: workspace.gitlabProjectId,
       token: config.gitlab.token,
       sourceBranch: branchName,
       targetBranch: expectedJinan,
@@ -365,7 +393,7 @@ export async function runOneTicket(
     const addMrNote = config.addMrNote ?? addMergeRequestNote
     await addMrNote({
       host: config.gitlab.host,
-      projectId: config.gitlab.projectId,
+      projectId: workspace.gitlabProjectId,
       token: config.gitlab.token,
       mergeRequestIid: mr.iid,
       body: noteBody,
@@ -477,6 +505,82 @@ function skipReason(index: MenuMappingIndex, targetMenu: string | null): string 
     return 'home 不在自动修复范围，保持原状态'
   }
   return `无菜单映射：${targetMenu}，保持原状态`
+}
+
+/**
+ * Prefer explicit workspaces; otherwise synthesize from gitlab.projectId + roots (tests only).
+ * @param config - orchestrator config.
+ * @returns workspace list used for autofix flags and GitLab project ids.
+ */
+function resolveWorkspaces(config: OrchestratorConfig): readonly OperatorWorkspace[] {
+  if (config.workspaces !== undefined) {
+    return config.workspaces
+  }
+  const projectId = config.gitlab.projectId
+  if (typeof projectId !== 'number') {
+    throw new Error('OrchestratorConfig.workspaces 缺失且无法从 gitlab.projectId 合成')
+  }
+  return [
+    {
+      id: 'custom',
+      localRoot: config.workspaceRoots.custom,
+      gitlabProjectId: projectId,
+      productBranch: config.productBranches.custom,
+      mappingRepo: 'custom',
+      autofix: true,
+    },
+    {
+      id: 'ailpha',
+      localRoot: config.workspaceRoots.ailpha,
+      gitlabProjectId: projectId,
+      productBranch: config.productBranches.ailpha,
+      mappingRepo: 'ailpha',
+      autofix: true,
+    },
+    {
+      id: 'home',
+      localRoot: config.workspaceRoots.home,
+      gitlabProjectId: projectId,
+      productBranch: config.productBranches.home,
+      mappingRepo: 'home',
+      autofix: false,
+    },
+  ]
+}
+
+/**
+ * Look up the configured workspace for a mapped custom/ailpha repo.
+ * @param config - orchestrator config.
+ * @param repo - mapping repo after {@link resolveMenu} succeeds.
+ * @returns workspace, or undefined when that mappingRepo is not configured.
+ */
+function workspaceForRepo(
+  config: OrchestratorConfig,
+  repo: 'custom' | 'ailpha',
+): OperatorWorkspace | undefined {
+  return resolveWorkspaces(config).find(ws => ws.mappingRepo === repo)
+}
+
+/**
+ * Skip a mapped ticket without claiming 处理中 (same followup as home / unmapped).
+ * @param config - orchestrator config.
+ * @param ticketId - platform id.
+ * @param reason - followup / outcome text.
+ * @returns skipped outcome.
+ */
+async function skipMappedWithoutClaim(
+  config: OrchestratorConfig,
+  ticketId: number,
+  reason: string,
+): Promise<TicketOutcome> {
+  if (config.writeSkipFollowup !== false) {
+    await config.client.createFollowup(ticketId, {
+      content: reason,
+      status_change: null,
+      assignee_change: null,
+    })
+  }
+  return { kind: 'skipped', reason }
 }
 
 /**

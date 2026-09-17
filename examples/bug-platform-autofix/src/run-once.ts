@@ -10,6 +10,8 @@ import { BugPlatformClient } from '@deepseek-ai/dsh-bug-platform-http'
 import {
   acquireRunLock,
   createDefaultAgentRunner,
+  defaultRunGit,
+  inspectWorkspace,
   loadMenuMapping,
   loadOperatorConfig,
   loadState,
@@ -116,6 +118,35 @@ function requireProductWorkspaces(cfg: OperatorConfig): {
     throw new Error('operator.yaml 必须包含 mappingRepo 为 custom、ailpha、home 的三条工作区')
   }
   return { custom, ailpha, home }
+}
+
+/**
+ * Inspect every `autofix: true` workspace; print `id: 原因` on failure.
+ * @param cfg - parsed operator.yaml.
+ * @param runGit - same git runner the orchestrator will use.
+ * @returns true when every inspected workspace is healthy.
+ */
+async function inspectAutofixWorkspaces(
+  cfg: OperatorConfig,
+  runGit: typeof defaultRunGit,
+): Promise<boolean> {
+  let ok = true
+  for (const ws of cfg.workspaces) {
+    if (ws.autofix !== true) continue
+    const report = await inspectWorkspace({
+      localRoot: ws.localRoot,
+      productBranch: ws.productBranch,
+      gitlabHost: cfg.gitlab.host,
+      gitlabProjectId: ws.gitlabProjectId,
+      runGit,
+    })
+    if (report.ok) continue
+    ok = false
+    for (const reason of report.reasons) {
+      process.stderr.write(`${ws.id}: ${reason}\n`)
+    }
+  }
+  return ok
 }
 
 /**
@@ -262,9 +293,9 @@ async function runWithLock(
     },
     gitlab: {
       host: cfg.gitlab.host,
-      projectId: custom.gitlabProjectId,
       token: gitlabToken,
     },
+    workspaces: cfg.workspaces,
     assetsDir,
     lintEnabled: cfg.run.lintEnabled,
     buildEnabled: cfg.run.buildEnabled,
@@ -278,6 +309,12 @@ async function runWithLock(
     },
     // Spawn harness `apps/cli` with product worktree as cwd — never `pnpm dsh` inside dkh-*.
     agentRunner: createDefaultAgentRunner({ harnessRoot: cfg.harnessRoot }),
+  }
+
+  const healthOk = await inspectAutofixWorkspaces(cfg, config.runGit ?? defaultRunGit)
+  if (!healthOk) {
+    process.exitCode = 1
+    return
   }
 
   let keepPolling = true
