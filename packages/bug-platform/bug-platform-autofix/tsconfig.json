@@ -22,6 +22,9 @@
     },
     {
       "path": "../bug-platform-http"
+    },
+    {
+      "path": "../../skill/skill"
     }
   ]
 }

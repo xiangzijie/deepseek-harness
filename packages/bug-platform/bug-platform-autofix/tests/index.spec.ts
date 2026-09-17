@@ -27,6 +27,8 @@ describe('bug-platform-autofix plugin', () => {
     expect(typeof BugPlatformAutofix.loadManifest).toBe('function')
     expect(typeof BugPlatformAutofix.assertGlobalSkillsRunnable).toBe('function')
     expect(typeof BugPlatformAutofix.createDefaultAgentRunner).toBe('function')
+    expect(typeof BugPlatformAutofix.renderHeadlessSkillPatch).toBe('function')
+    expect(typeof BugPlatformAutofix.resolvePersonalSkillPluginPath).toBe('function')
     expect(typeof BugPlatformAutofix.runOneTicket).toBe('function')
     expect(typeof BugPlatformAutofix.runBatch).toBe('function')
     expect(typeof BugPlatformAutofix.inspectWorkspace).toBe('function')

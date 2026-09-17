@@ -103,6 +103,9 @@ export type {
 } from './run-agent.ts'
 export { createDefaultAgentRunner, resolveHarnessTsxImport, resolveHarnessTsxTsconfig } from './run-agent.ts'
 
+export type { HeadlessSkillPatchInput } from './headless-skill-patch.ts'
+export { renderHeadlessSkillPatch, resolvePersonalSkillPluginPath } from './headless-skill-patch.ts'
+
 export type {
   LintRunner,
   OrchestratorClient,

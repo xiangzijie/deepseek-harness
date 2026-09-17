@@ -160,8 +160,8 @@ async function assertForcedGlobalSkillsReady(
   const globalLocal = cfg.skills.globalLocal
   const forceNames = existsSync(globalLocal)
     ? loadManifest(globalLocal)
-        .filter(entry => entry.force === true)
-        .map(entry => entry.name)
+      .filter(entry => entry.force === true)
+      .map(entry => entry.name)
     : ['missing-clone']
   await assertGlobalSkillsRunnable({
     globalLocal,
@@ -340,7 +340,13 @@ async function runWithLock(
       ...(visionModel === undefined || visionModel.length === 0 ? {} : { model: visionModel }),
     },
     // Spawn harness `apps/cli` with product worktree as cwd — never `pnpm dsh` inside dkh-*.
-    agentRunner: createDefaultAgentRunner({ harnessRoot: cfg.harnessRoot }),
+    agentRunner: createDefaultAgentRunner({
+      harnessRoot: cfg.harnessRoot,
+      skillPatch: {
+        globalSkillsDir: join(cfg.skills.globalLocal, 'skills'),
+        personalRoot: join(cfg.skills.personalRoot, cfg.run.operatorId),
+      },
+    }),
   }
 
   const healthOk = await printAutofixWorkspaceHealth(cfg, config.runGit ?? defaultRunGit)

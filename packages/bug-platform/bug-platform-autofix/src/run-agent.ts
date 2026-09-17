@@ -4,9 +4,16 @@
  */
 
 import { spawn } from 'node:child_process'
+import { randomBytes } from 'node:crypto'
+import { writeFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
+import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
+import {
+  renderHeadlessSkillPatch,
+  resolvePersonalSkillPluginPath,
+} from './headless-skill-patch.ts'
 
 /** Options passed to an {@link AgentRunner}. */
 export interface AgentRunnerOptions {
@@ -43,6 +50,18 @@ export interface DefaultAgentRunnerOptions {
   harnessRoot: string
   /** Wall-clock timeout in milliseconds; defaults to 30 minutes. */
   timeoutMs?: number
+  /**
+   * When set, each spawn writes a `--patch` overlay that sets skill-filesystem
+   * `customSkillDirs` to `globalSkillsDir` and inserts the rank-50 personal
+   * provider at `personalRoot`. Directories need not exist. `personalRoot` is
+   * already operator-scoped (`join(personalRoot, operatorId)`) at the caller.
+   */
+  skillPatch?: {
+    /** Global clone `skills/` directory. */
+    globalSkillsDir: string
+    /** Operator-scoped personal skill directory. */
+    personalRoot: string
+  }
 }
 
 /**
@@ -69,12 +88,14 @@ export function resolveHarnessTsxTsconfig(harnessRoot: string): string {
 }
 
 /**
- * Spawn harness `dsh --profile headless <brief>` with `cwd` set to the product
- * worktree so FS tools edit the mapped repo. Uses `node --import <absolute
- * tsx> apps/cli/src/bin.ts` under {@link DefaultAgentRunnerOptions.harnessRoot}
- * and sets `TSX_TSCONFIG_PATH` to the harness `tsconfig.json` so workspace
- * packages resolve to `src/` even when cwd is not the harness root.
- * @param options - harness root and optional timeout.
+ * Spawn harness `dsh --profile headless [--patch <overlay.yml>] <brief>` with
+ * `cwd` set to the product worktree so FS tools edit the mapped repo. Uses
+ * `node --import <absolute tsx> apps/cli/src/bin.ts` under
+ * {@link DefaultAgentRunnerOptions.harnessRoot} and sets `TSX_TSCONFIG_PATH`
+ * to the harness `tsconfig.json` so workspace packages resolve to `src/` even
+ * when cwd is not the harness root. The `--patch` overlay is written per call
+ * under `os.tmpdir()` when {@link DefaultAgentRunnerOptions.skillPatch} is set.
+ * @param options - harness root, optional timeout, and optional skill overlay.
  * @returns an {@link AgentRunner}.
  */
 export function createDefaultAgentRunner(
@@ -88,7 +109,7 @@ export function createDefaultAgentRunner(
     new Promise<AgentRunnerResult>((resolve) => {
       const child = spawn(
         process.execPath,
-        ['--import', tsxImport, binEntry, '--profile', 'headless', opts.brief],
+        buildHeadlessArgv(options, binEntry, tsxImport, opts.brief),
         {
           cwd: opts.cwd,
           env: {
@@ -134,4 +155,39 @@ export function createDefaultAgentRunner(
         })
       })
     })
+}
+
+/**
+ * Build `node --import <tsx> <bin> --profile headless [--patch <overlay>] <brief>`.
+ * Overlay path is unique per call so concurrent runners cannot clobber YAML.
+ * @param options - runner options (skill overlay is optional).
+ * @param binEntry - absolute `apps/cli/src/bin.ts`.
+ * @param tsxImport - absolute `file:` tsx specifier.
+ * @param brief - positional brief after launcher flags.
+ * @returns spawn argv for `process.execPath`.
+ */
+function buildHeadlessArgv(
+  options: DefaultAgentRunnerOptions,
+  binEntry: string,
+  tsxImport: string,
+  brief: string,
+): string[] {
+  const argv = ['--import', tsxImport, binEntry, '--profile', 'headless']
+  if (options.skillPatch !== undefined) {
+    const overlayPath = join(
+      tmpdir(),
+      `dsh-autofix-skill-${process.pid}-${randomBytes(4).toString('hex')}.yml`,
+    )
+    writeFileSync(
+      overlayPath,
+      renderHeadlessSkillPatch({
+        globalSkillsDir: options.skillPatch.globalSkillsDir,
+        personalRoot: options.skillPatch.personalRoot,
+        personalPluginPath: resolvePersonalSkillPluginPath(options.harnessRoot),
+      }),
+    )
+    argv.push('--patch', overlayPath)
+  }
+  argv.push(brief)
+  return argv
 }

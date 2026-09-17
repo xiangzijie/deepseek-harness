@@ -33,7 +33,7 @@ Status: implemented
 
 每次 push 成功后，编排 **ensure** MR（创建或冲突时复用）、写 MR note，并写平台 followup（`处理中`，含 MR／commit／摘要）。同一 `bugfix/<id>` 的再次修复因此仍更新平台处理记录与 MR 讨论，不会仅因「MR 已存在」失败。强制 `--ticket`／`--tickets` 可重跑 `done`／`awaiting_push`／`failed`；仅本地 `claimed`／`fixing` 会拦住。
 
-默认 agent runner 在 `harnessRoot` 下经 tsx 拉起 harness `apps/cli`，cwd 为产品工作区——禁止在产品仓内 `pnpm dsh`。示例支持 `--poll-interval <秒>` 串行守护轮询；亦可用 Windows 任务计划周期性拉起 `--max 1`。运维入口 `reset-to-pending.ts` 可将单批量改回「待确认」（`--tickets`，或不写则取本地 `phase=failed`），写跟进并清本地 state，不跑 agent。跑批进度：终端打印队列与 `[i/n]`，并写 `progress.json`（可选展示 `pid`）。`run-once` 在强制／白名单／轮询整段生命周期持有 `dirname(progressFile)/run.lock`：存活 holder pid 以 `已有跑批（pid=<n>），progressFile=<path>` 失败；`ESRCH` 视为过期并替换；`EPERM` 视为仍存活，不得抢占。
+默认 agent runner 在 `harnessRoot` 下经 tsx 拉起 harness `apps/cli`，cwd 为产品工作区——禁止在产品仓内 `pnpm dsh`。当传入 `skillPatch` 时，每次 spawn 写入 `dsh --profile headless --patch <overlay.yml> <brief>`：overlay 只覆盖 skill-filesystem 的 `customSkillDirs`（全局 `skills/`，rank 300，仓内 100/200 覆盖全局），并 insert rank=50 的 `autofix-personal` 提供方（`join(personalRoot, operatorId)`），因此个人 > 仓内 > 全局。不要改 `packages/skill/skill-filesystem` 的 rank 表。overlay 插件 `name` 用源码面 `.ts` 路径，tsx source-launch 不必先构建 `./personal-skill-plugin` export。示例支持 `--poll-interval <秒>` 串行守护轮询；亦可用 Windows 任务计划周期性拉起 `--max 1`。运维入口 `reset-to-pending.ts` 可将单批量改回「待确认」（`--tickets`，或不写则取本地 `phase=failed`），写跟进并清本地 state，不跑 agent。跑批进度：终端打印队列与 `[i/n]`，并写 `progress.json`（可选展示 `pid`）。`run-once` 在强制／白名单／轮询整段生命周期持有 `dirname(progressFile)/run.lock`：存活 holder pid 以 `已有跑批（pid=<n>），progressFile=<path>` 失败；`ESRCH` 视为过期并替换；`EPERM` 视为仍存活，不得抢占。
 
 ### 上下文不足／非前端时停止
 
