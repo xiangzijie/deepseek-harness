@@ -17,12 +17,13 @@
 
 ### 1.2 非目标（第一期不做）
 
-- 定时轮询、多并发 worktree。
+- 有限并发 worktree（同一 `localRoot` 同时多于 1 单）。串行轮询由 CLI `--poll-interval` / `--continuous` 提供。
 - **默认自动合入 MR**（合入策略见 §3.11：一期只开 MR，人工合；高确信度自动合留待后续且须审计记录）。
 - 自动转派后端处理人。
 - 修改 `dkh-home`（左侧菜单 / home 包默认不在范围内）。
 - 截图视觉回归门禁（截图仅作模型输入）。
-- 完整三件套文档化与产品化打包（完整 Seam + Bundle 留待后续加强）。
+- 完整 capability seam + 可安装 dsh bundle（业务控制台走 M1 独立仓，见 [控制台规格](./2026-09-15-bug-platform-autofix-console-design.md)）。
+- 从问题描述推断或模糊匹配菜单（定位只认结构化 `target_menu` 精确映射；提报规范见 §4.3）。
 
 ## 2. 外部系统
 
@@ -45,9 +46,9 @@
 列表查询第一期固定语义：
 
 - `project_id=47`
-- `status=待确认,验证未通过,转派,转需求`（实现时可分页）
+- `status=待确认,验证未通过`（实现时可分页）
 - 不按 `version_id` 过滤
-- 客户端再过滤：`assignee_id == null`；`target_menu` 不是 `网络安全数据大屏`／`网络安全指挥大屏`
+- 客户端再过滤：`assignee_id == null`；`target_menu !== "网络安全数据大屏"`
 
 Followup 写回字段（已验证）：`content`、`attachments`、`status_change`、`issue_type_change`、`assignee_change`、`plan_solve_date_change`。
 
@@ -78,7 +79,7 @@ Followup 写回字段（已验证）：`content`、`attachments`、`status_chang
 - 项目 path：`jgts/bigdata-web-frontend`（三工作区共用同一 remote）
 - MR：在对应工作区内 push `bugfix/<id>`，目标分支为**该工作区绑定的 jinan**（custom 单 → `dkh-custom-jinan`，ailpha 单 → `dkh-ailpha-jinan`）；不得把 custom 修复 MR 打到 ailpha 分支
 - 策略：优先自动 push + 开 MR；失败则本地 commit，平台保持 `处理中` 并注明待人工推送
-- 凭证：`GITLAB_TOKEN` 等，仅 env；无 Token 时不得假装修单已闭环成功
+- 凭证：`GITLAB_TOKEN` 等，仅 env；无 Token 时不得报「现场验证」成功
 
 ## 3. 端到端流程
 
@@ -110,8 +111,8 @@ Followup 写回字段（已验证）：`content`、`attachments`、`status_chang
 
 ### 3.2 选单与幂等
 
-- `GET /api/bug-tickets`：`project_id=47`，`status=待确认,验证未通过,转派,转需求`，按页拉取直至满足「本批已修/已尝试上限」或无更多页。
-- 客户端过滤：保留 `assignee_id == null` 且 `target_menu` 不是 `网络安全数据大屏`／`网络安全指挥大屏`。
+- `GET /api/bug-tickets`：`project_id=47`，`status=待确认,验证未通过`，按页拉取直至满足「本批已修/已尝试上限」或无更多页。
+- 客户端过滤：保留 `assignee_id == null` 且 `target_menu !== "网络安全数据大屏"`。
 - 读取本地状态文件：若该 `ticket_id` 的 `phase` 为进行中（如 `claimed` / `fixing` / `awaiting_push`）或已成功闭环且策略禁止重开，则跳过。
 - 默认每批只处理 1 单；配置 `maxTickets` 时可连续尝试多个候选，但第一期仍建议串行（并发=1）。
 
@@ -120,7 +121,7 @@ Followup 写回字段（已验证）：`content`、`attachments`、`status_chang
 - `GET /api/bug-tickets/:id`。
 - 取出并规范化：`id`、`target_menu`、`description`、`issue_type`、`importance`、`followups`。
 - `followups` 按 `created_at` 升序排列，注入时标明「以最新跟进为准」。
-- 此时只记录截图/附件的远程 `url` 列表；**映射通过后再下载**（避免无映射单浪费 IO）。下载与上下文预检在领单（3.5）之前完成。
+- 此时只记录截图/附件的远程 `url` 列表，**先不下载**（等映射通过并领单后再下，避免无映射单浪费 IO）。
 
 ### 3.4 映射决议（领单前）
 
@@ -137,9 +138,9 @@ Followup 写回字段（已验证）：`content`、`attachments`、`status_chang
 - 本地状态写入：`phase=claimed`，记录 `repo`、`branch`、时间戳。
 - 若 followup 失败：不创建分支、不调 agent；记错误并处理下一候选（或中止，可配置）。
 
-### 3.6 下载附件（领单前）
+### 3.6 下载附件
 
-- 映射通过后、写「处理中」之前下载主单 `screenshots[]` 与各 `followups[].attachments[]`（供上下文预检与后续 brief）。
+- 下载主单 `screenshots[]` 与各 `followups[].attachments[]`。
 - 跳过 `file_size === 0` 或下载失败的项，并在 Agent brief 中注明缺失。
 - 保存到跑批工作目录（如 `.dsh-bugfix/<ticket_id>/assets/`）；施加张数/总大小上限配置。
 - 相对路径用 `baseUrl` 拼接；请求带同一 Bearer。
@@ -149,19 +150,15 @@ Followup 写回字段（已验证）：`content`、`attachments`、`status_chang
 - 目标仅为映射得到的那一个 `localRoot`；**不得**切换到其它两个本地目录去改本单。
 - 开跑前断言：当前分支为本目录绑定的 jinan，或已是本单的 `bugfix/<ticket_id>`。若当前在其它产品 jinan（例如在 ailpha 目录上却是 `dkh-custom-jinan`）→ **中止并回写**，禁止自动 checkout「纠正」。
 - `git status` 干净；dirty 则失败并说明。
-- **以上工作区断言在领单（写「处理中」）之前执行**：未就绪只写跟进且不改状态，本地 `phase=skipped`。
-- 仅在本目录内，领单后再从**该目录绑定的产品 jinan** 创建 `bugfix/<ticket_id>`（若当前停在其它 `bugfix/*` 上，须先 checkout 回 jinan 再 `checkout -b`，禁止叠前序单提交）；MR 目标为**同一产品 jinan**（同一 GitLab 项目内的对应分支）。
+- 仅在本目录内，从**该目录绑定的产品 jinan** 创建 `bugfix/<ticket_id>`（若当前停在其它 `bugfix/*` 上，须先 checkout 回 jinan 再 `checkout -b`，禁止叠前序单提交）；MR 目标为**同一产品 jinan**（同一 GitLab 项目内的对应分支）。
 - 不得在本目录检出另一条产品 jinan 来改文件。
 - 状态：`phase=fixing`。
 
 ### 3.8 调用 Agent
 
 - 启动 dsh headless（或等价编排）：工作目录=目标仓；注入 §4.1 brief（含本地截图路径、`routesFile`、`filePath`/`routeHint`）。
-- 优先在映射路径与路由指向的模块内修改。
-- **停止／跳过（非「猜改」）**：上下文不足，或无法确定为前端问题（更像接口／数据／权限／配置／纯后端）时，禁止改码。Agent 摘要须含一行 `SKIP_AUTOFIX|<类别>|<原因>`（类别：`insufficient_context`｜`not_frontend`｜`out_of_scope`）；编排解析后写平台跟进（含类别与原因），状态保持 `处理中`，本地 `phase=failed`。
-- **预检**：领单并下载附件前，若描述过短（阈值见实现）且无可用截图，直接停止：写平台处理记录（含类别与原因），**不**改为 `处理中`，本地 `phase=skipped`（白名单跑批不再自动重拉；`--ticket` 可强制重试）。
-- **截图视觉预跑（方案 A）**：映射通过且本地已有可用截图时，在领单前调用官方 DeepSeek 多模态（默认模型 `deepseek-flash`，`DEEPSEEK_API_KEY`／可选 `DEEPSEEK_BASE_URL`）：将截图以 base64 `image_url` 送入 `chat/completions`，得到中文「截图观察」注入 agent brief 的 `## 截图观察（模型视觉）`。张数／单张体积有上限。视觉失败时写跟进说明且**不**改状态，默认仍允许继续领单（靠文字上下文）；完整 harness 多模态（方案 B）另期。
-- **判断准则（brief，不新增类别）**：独立判断、勿一味迎合工单叙述；区分事实／预测／观点；信息源优先级为本仓代码与映射 → **截图观察（若有）** → 截图／附件路径 → 带具体路径或接口的最新跟进 → 较早跟进 → 笼统描述。证据冲突、需求型诉求、过大改动面、仅能线上复现、环境配置、已修复／过时、安全敏感等，归入上述三类停止，禁止猜改。
+- 约束提示：优先在映射路径与路由指向的模块内修改；像纯后端/纯数据问题则停止改代码并返回可解析的失败原因。
+- Agent 异常退出、超时、无有效 diff：进入失败回写（3.10 失败支路），不开 MR。
 
 ### 3.9 门禁
 
@@ -176,15 +173,15 @@ Followup 写回字段（已验证）：`content`、`attachments`、`status_chang
 ### 3.10 Git 与结果回写
 
 - **尝试**：在**同一目标目录**内 commit → push `bugfix/<id>` → 向**该目录绑定的 jinan** **ensure** MR（同一 `bigdata-web-frontend` 项目内；custom 单目标 `dkh-custom-jinan`，不得打到 `dkh-ailpha-jinan`）：首次创建；若源分支已有 MR（冲突）则复用已有 MR，不因二次修单失败。
-- **每次 push 成功**：向该 MR 追加 discussion note（含 commit 与摘要）；平台 followup `status_change=处理中`，content 含 MR URL、commit、摘要（首次与再次提交均写独立跟进；**不**改为「现场验证」）；`phase=done`，记录 `mrUrl`。
-- **无 Token / push 或 ensure MR 失败**：确保本地 commit 存在；followup 保持 `处理中`（或 `status_change=处理中`），写分支名、commit、待人工推送；`phase=awaiting_push`。**禁止**标「现场验证」。
-- **修失败 / 偏后端 / `SKIP_AUTOFIX` 停止**：followup 保持 `处理中` + 原因（停止类跟进含类别）；不开假 MR；`phase=failed`。
+- **每次 push 成功**：向该 MR 追加 discussion note（含 commit 与摘要）；平台 followup `status_change=处理中`，content 含 MR URL、commit、摘要（首次与再次提交均写独立跟进）；`phase=done`，记录 `mrUrl`。人工审阅合入前不得标 `现场验证`。
+- **无 Token / push 或 ensure MR 失败**：确保本地 commit 存在；followup 保持 `处理中`（或 `status_change=处理中`），写分支名、commit、待人工推送；`phase=awaiting_push`。不得把未推送的本地 commit 写成验收成功。
+- **修失败 / 偏后端**：followup 保持 `处理中` + 原因；不开假 MR；`phase=failed`。
 - 本批若 `maxTickets>1`，回到列表循环处理下一候选；第一期默认处理完 1 单成功或 1 单失败尝试后结束亦可配置。
 - **强制 `--tickets`**：可重跑 `done`／`awaiting_push`／`failed`；仅跳过本地仍为 `claimed`／`fixing` 的单。
 
 ### 3.11 合入策略（产品约定）
 
-默认模式：**自动修 + 人工合**。开 MR 并回写 `处理中`（跟进含 MR 链接）后，由人审 diff／合入 jinan；编排**不得**默认调用 GitLab merge，也**不得**把平台状态改为「现场验证」。
+默认模式：**自动修 + 人工合**。开 MR 并回写 `处理中`（跟进含 MR 链接）后，由人审 diff／合入 jinan；编排**不得**默认调用 GitLab merge。
 
 例外（后续分期可实现，一期不启用）：仅当修复后判定为**百分之百无问题**时，才允许自动合入该 MR。启用时必须同时满足：
 
@@ -209,25 +206,34 @@ Followup 写回字段（已验证）：`content`、`attachments`、`status_chang
 - **结构**：读取 `systems.*.items[]`；不必再维护单独的简表 YAML。
 - **每项关键字段**：`target_menu`、`menu_path`、`menu_code`、`repo`、`branch`、`routeHint`、`filePath`、`file_exists`。
 - **解析规则**：
-  - 按 bug 的 `target_menu` 精确匹配 `items[].target_menu`。
+  - 按 bug 的 `target_menu` 精确匹配 `items[].target_menu`（不读描述做菜单决议；提报须选末端叶子，见 §4.3）。
   - 可修：`repo` 为 `custom` 或 `ailpha`，且建议 `file_exists === true`；`repo == null` 或无法定位 → 视为无映射，跳过。
   - 多条命中：优先 `custom`，再 `ailpha`；仍冲突时用 `menu_path` / `menu_code` 消歧。
   - 指向 home 或非 custom/ailpha → 跳过。
-  - `target_menu` 为 `网络安全数据大屏` 或 `网络安全指挥大屏` 仍由选单过滤排除（映射中即使存在也不领）。
+  - `target_menu === "网络安全数据大屏"` 仍由选单过滤排除（映射中即使存在也不领）。
 - **已验证样例**：
   - bug `387`（`支撑单位`）→ `repo=custom`，`filePath=src/views/networkSecurityIndustry/index.vue`
-  - **试点单** bug `428`（`资产核查`）→ `repo=custom`，`routeHint=/assets/assetVerification`，`filePath=src/views/assetVerification/index.vue`；最新跟进：`/api/company/listPageV2` 需 `application/json`。状态可为 `转派`（已在默认选单白名单）。
+  - **试点单** bug `428`（`资产核查`）→ `repo=custom`，`routeHint=/assets/assetVerification`，`filePath=src/views/assetVerification/index.vue`；最新跟进：`/api/company/listPageV2` 需 `application/json`。注意：状态为 `转派`，不在默认选单白名单，跑批须 `--ticket 428` 强制领单。
 - **可选**：Config 增加 `menuAllowlist`（仅跑指定 `target_menu`）；缺省则凡可解析且可修的菜单均可尝试。
+
+### 4.3 提报与映射运维约定（流程规范）
+
+提报侧强制选到**末端菜单**（产品级联中的叶子页），不得停在父级分组。Autofix 不根据描述里的子功能名补定位。
+
+- **一单粒度**：多处现象若共用同一组件/枚举源 → 开 1 单，菜单选共享入口或主入口叶子，描述列清各回归点；若为独立页面/路由 → 按叶子拆单，便于一单目录、一 MR。
+- **映射配套**：叶子进入平台级联后，须在 `menu-mapping.json` 补可修条目（`repo` 为 `custom` 或 `ailpha`，并带 `filePath` / `routeHint`）。父级分组可继续 `repo: null`，避免误领整棵子树。
+- **历史不合规单**（父级 / 无映射，例如曾选「事件隐患分析」而描述才点名子页）：人工改菜单或补映射后再跑；第一期不从描述自动救单。
+- **跳过语义不变**：精确匹配失败或 `repo == null` → 不领单、可选 followup 说明、保持原状态（§3.4 / §5）。
 
 ## 5. 状态机与回写
 
 | 事件 | `status_change` | `assignee_change` | `content` 要点 |
 |------|-----------------|-------------------|----------------|
 | 领单开始 | `处理中` | `null`（不改指派） | 自动修复开始 |
-| MR 成功 | `处理中` | `null` | MR 链接 + 摘要；请人工审阅合入（不改为现场验证） |
+| MR 成功 | `处理中` | `null` | MR 链接 + 摘要；人工合入前不标现场验证 |
 | 本地已修好但 Git 失败 | `处理中`（或 `status_change` 为空且当前已是处理中） | `null` | 分支名、commit、待人工推送；禁止标现场验证 |
-| 修失败 / `SKIP_AUTOFIX` 停止 / 像后端问题 | 保持处理中 | `null` | 类别＋原因（或失败原因）；第一期不转派 |
-| 无映射 / home / 预检不足（未领单） | 不标处理中；followup 且 `status_change` 为空 | — | 跳过／停止原因；保持原状态 |
+| 修失败 / 像后端问题 | 保持处理中 | `null` | 失败原因；第一期不转派 |
+| 无映射 / home 范围外 | 不标处理中；可选 followup 且 `status_change` 为空 | — | 跳过原因；保持原状态 |
 
 第一期不自动转派后端（即使内容像数据/接口问题）。
 
@@ -256,37 +262,40 @@ Followup 写回字段（已验证）：`content`、`attachments`、`status_chang
 1. 手动触发后，能领到符合过滤条件的未指派单，并写 `处理中`。
 2. 无映射的单被跳过且有跟进说明。
 3. 有映射的试点单：只在正确本地目录（优先 custom）产生 `bugfix/<id>` 与本地 commit；不出现在错误目录切换产品 jinan 改代码。
-4. GitLab 可用时开出 MR 并回写 `处理中`（跟进含 MR）；不可用时保持 `处理中` 且说明待推送。全程不标「现场验证」。
+4. GitLab 可用时开出 MR，平台保持 `处理中` 且跟进含 MR 链接；不可用时保持 `处理中` 且说明待推送。
 5. 凭证仅来自环境变量；仓库中无密钥。
 
-## 9. 后续分期
+## 9. 产品里程碑
 
-### 9.1 二期（运维与产品化）
+M0 的行为以本文 §1–8 为准。M1 及之后的控制台、skill、review、clone、多人与进程内编排以 [控制台规格](./2026-09-15-bug-platform-autofix-console-design.md) 为准。两份规格共用下表，不另列互相覆盖的「二期清单」。
 
-目标：在一期手动闭环之上，把跑批变成可持续的自动流水，并把接入方式产品化。
+| 里程碑 | 状态 | 内容 |
+|--------|------|------|
+| **M0 值班机 CLI** | 已落地（`feature/bug-platform-autofix`，未合 `master`） | 领单 → 映射 → headless → MR；`--poll-interval` / `--continuous`；预检与视觉；进度与回滚。工作区路径仍硬编码。 |
+| **M1 控制台第一交付** | 待实现 | `operator.yaml`、三页 UI、全局 skill git、个人上传、强制注入 brief。仍用本机 clone。 |
+| **M2 跑批增强** | 待实现 | 有限并发（每个 `localRoot` 同时最多 1 单）、stats / importance 选单 |
+| **M3 质量与远程仓** | 待实现 | MR 只读 review；工作区 `mode: clone` |
+| **M4 在线多人** | 待实现 | 账号、`operatorId`、内网部署；每产品线一个守护进程 |
+| **M5 运行时收口** | 待实现 | 控制台进程内调用 autofix 库。业务控制台不做进 `dsh web` / bundle |
+| **M6 经验库** | 待实现 | 按菜单沉淀「这类单通常怎么改」；与 skill（怎么修）分工见 §9.1 |
 
-- **定时轮询与有限并发（部分已落地）**：示例支持 `--continuous`（每批 `--max N` 串行修完立刻拉下一批；空批短退避）与 `--poll-interval <秒>`（定时跑批，二者互斥）。有限跨仓并发仍未做。
-- stats / importance 优先级选单
-- 自动转派后端账号
-- 完整 capability seam + bundle 产品化
-- home 若确需改，再显式纳入映射与范围
-- 视觉或预览环境验收（可选）
-- **高确信度自动合 MR**（默认仍人工合；仅 §3.11 例外路径）：自动合时必须在平台处理记录中留下判定依据与审计字段
-- （可选、非主路径）极简本地 `lessons` 追加：成功修单后按 `target_menu` 记一条短笔记，下次 brief 注入 ≤N 条——仅当业务急需提前试用时启用；正位仍见 §9.2
+**默认不做：** 自动转派后端、从描述推断菜单、默认自动合入 MR、修改 `dkh-home`、截图视觉回归门禁。高确信度自动合仅 §3.11。`home` 仅当映射显式纳入且 `autofix: true` 时才改。
 
-### 9.2 三期（经验沉淀）
+M1 之前不启用按菜单追加极简 `lessons` 旁路；需要跨单经验时走 §9.1，不与全局 skill 仓混用。
+
+### 9.1 M6 经验沉淀
 
 目标：沉淀「某菜单常改哪、某类接口怎么修」等跨单经验，提升修复命中率。不自建 DSH 一等 memory capability；优先本地结构化经验库（建议落在 `dkh-bugFix-project` 或产品仓 `.agents/`），必要时再接第三方 MCP memory。
 
-**流程（已约定）**
+与 skill 分工：全局/个人/仓内 skill 管「修单时怎么做」；经验管「这类菜单通常改哪」。映射仍只负责落到哪仓哪文件。
 
-1. AI 修单成功（已开／复用 MR、回写 `处理中` 且跟进含 MR）后，系统根据 diff 与摘要**自动起草**一条短经验（症状、菜单、改法、关键路径、反例），状态为「待确认」。草稿默认挂在修单成功，**不依赖**人工是否已合入 MR。
-2. **通用型闸门**（规则与／或模型）：跨页共用组件／枚举／请求约定、同类菜单或问题类型可复用者进入待确认队列；一次性文案、纯后端／数据、单页特例 → 不入库（可丢弃或标「不入库」）。
-3. **人工**只处理待确认队列（抽查，非每单必做）：通过／改一句后入库，或拒绝。日常仍以人工合 MR 为主；合入本身不等于经验入库。发现误导性已入库条目时作废／删除。
+1. 修单成功（已开／复用 MR、回写 `处理中` + MR 链接）后，系统根据 diff 与摘要自动起草一条短经验（症状、菜单、改法、关键路径、反例），状态为「待确认」。草稿挂在修单成功，不依赖人工是否已合入 MR。
+2. 通用型闸门（规则与／或模型）：跨页共用组件／枚举／请求约定、同类菜单或问题类型可复用者进入待确认队列；一次性文案、纯后端／数据、单页特例不入库。
+3. 人工只处理待确认队列（抽查）：通过／改一句后入库，或拒绝。合入 MR 不等于经验入库。误导性已入库条目作废／删除。
 4. 下次领单：按 `target_menu`／问题类型检索已入库经验 ≤N 条，注入 Agent brief。
-5. 与 `menu-mapping.json` 分工：映射管「落到哪仓哪文件」；经验管「这类单通常怎么改」。审计字段含来源 ticket、MR、时间。
+5. 审计字段含来源 ticket、MR、时间。
 
-一期／二期默认**不实现**；二期仅在业务急需时可启用 §9.1 极简 `lessons` 旁路，正位仍以本节为准。
+M0–M5 默认不实现本节。
 
 ## 10. 待用户补充（不阻塞骨架）
 
