@@ -85,6 +85,15 @@ export { loadManifest, resolveForcedSkills } from './skill-manifest.ts'
 export type { AssertGlobalSkillsRunnableOptions } from './skill-sync.ts'
 export { assertGlobalSkillsRunnable } from './skill-sync.ts'
 
+export type {
+  SkillUploadErr,
+  SkillUploadOk,
+  SkillUploadResult,
+  ValidateSkillUploadInput,
+  WritePersonalSkillInput,
+} from './skill-upload.ts'
+export { validateSkillUpload, writePersonalSkill } from './skill-upload.ts'
+
 export type { AutofixStop, AutofixStopCategory } from './autofix-stop.ts'
 export {
   assessPreAgentContext,
