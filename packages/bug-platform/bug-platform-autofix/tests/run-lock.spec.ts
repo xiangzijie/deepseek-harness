@@ -49,7 +49,8 @@ describe('acquireRunLock', () => {
   it('replaces a stale lock whose pid is dead', () => {
     const dir = mkdtempSync(join(tmpdir(), 'lock-'))
     const path = join(dir, 'run.lock')
-    writeFileSync(path, JSON.stringify({ pid: 1, startedAt: 't', configPath: 'x' }))
+    writeFileSync(path, JSON.stringify({ pid: 999_003, startedAt: 't', configPath: 'x' }))
+    mockKillErrno('ESRCH')
     const release = acquireRunLock(path, { pid: process.pid, startedAt: 'now', configPath: 'x' })
     expect(readRunLock(path)?.pid).toBe(process.pid)
     release()
