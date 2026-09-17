@@ -1,8 +1,12 @@
 import { mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import { loadOperatorConfig } from '../src/operator-config.ts'
+
+const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '../../../..')
+const operatorExamplePath = join(repoRoot, 'examples/bug-platform-autofix/operator.example.yaml')
 
 /** Write a temporary operator.yaml and return its absolute path. */
 function writeYaml(body: string): string {
@@ -107,5 +111,55 @@ run: {}
   - { id: dup, localRoot: 'D:/b', gitlabProjectId: 1, productBranch: 'c', mappingRepo: ailpha }
 `))
     expect(() => loadOperatorConfig(path)).toThrow(/workspaces\[\]\.id/)
+  })
+
+  it('applies defaults when optional fields are omitted', () => {
+    const path = writeYaml(`
+harnessRoot: 'D:/h'
+bugPlatform: { baseUrl: 'http://x', projectId: 1 }
+gitlab: { host: 'http://g' }
+mappingFile: 'D:/m'
+stateFile: 'D:/s'
+progressFile: 'D:/p'
+assetsDir: 'D:/a'
+workspaces:
+  - { id: ws1, localRoot: 'D:/w', gitlabProjectId: 1, productBranch: 'b', mappingRepo: custom }
+skills:
+  { globalRepo: 'git@x:y.git', globalLocal: 'D:/g', personalRoot: 'D:/p' }
+run: {}
+`)
+    const cfg = loadOperatorConfig(path)
+    expect(cfg.gitlab.tokenEnv).toBe('GITLAB_TOKEN')
+    expect(cfg.skills.forceMaxCount).toBe(3)
+    expect(cfg.skills.forceMaxChars).toBe(8000)
+    expect(cfg.run.maxTickets).toBe(1)
+    expect(cfg.run.operatorId).toBe('local')
+    expect(cfg.run.lintEnabled).toBe(false)
+    expect(cfg.run.buildEnabled).toBe(false)
+    expect(cfg.workspaces[0]?.autofix).toBe(true)
+  })
+
+  it('rejects duplicate mappingRepo', () => {
+    const path = writeYaml(minimalYaml(`
+  - { id: a, localRoot: 'D:/a', gitlabProjectId: 1, productBranch: 'b', mappingRepo: custom }
+  - { id: b, localRoot: 'D:/b', gitlabProjectId: 1, productBranch: 'c', mappingRepo: custom }
+`))
+    expect(() => loadOperatorConfig(path)).toThrow(/mappingRepo/)
+  })
+
+  it('resolves workspaceById', () => {
+    const path = writeYaml(minimalYaml(`
+  - { id: my-custom, localRoot: 'D:/custom', gitlabProjectId: 1, productBranch: 'b', mappingRepo: custom }
+`))
+    const cfg = loadOperatorConfig(path)
+    expect(cfg.workspaceById('my-custom')?.localRoot).toBe('D:/custom')
+    expect(cfg.workspaceById('missing')).toBeUndefined()
+  })
+
+  it('loads operator.example.yaml with three workspaces', () => {
+    const cfg = loadOperatorConfig(operatorExamplePath)
+    expect(cfg.workspaces).toHaveLength(3)
+    expect(cfg.workspaceById('home')?.autofix).toBe(false)
+    expect(cfg.workspaceByMappingRepo('ailpha')?.productBranch).toBe('dkh-ailpha-jinan')
   })
 })

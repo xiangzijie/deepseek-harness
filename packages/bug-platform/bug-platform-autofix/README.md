@@ -4,6 +4,10 @@ English | [中文](README.zh.md)
 
 Library-first helpers for internal bug-platform autofix: load `menu-mapping.json`, resolve a ticket `target_menu` to a custom/ailpha worktree hit, filter list rows, keep a local JSON idempotency store, run per-worktree Git helpers (`assertProductBranch`, `assertClean`, `createBugfixBranch`, `commitAll`, `pushBranch`, `listChangedFiles`) with an injectable `RunGit`, optionally open a GitLab MR via `createMergeRequest`, and orchestrate one ticket or a batch with `runOneTicket` / `runBatch`. Phase 1 keeps Cordis `apply` as a Config stub (empty inject); orchestration imports helpers directly.
 
+## Operator configuration (`operator.yaml`)
+
+`loadOperatorConfig(configPath)` reads and validates the console/CLI `operator.yaml` at the path you pass (relative or absolute). Missing files and invalid shapes fail loud with an `Error` (for example `operator.yaml 不存在: …` or `operator-config: …` validation messages). Omitted optional fields receive defaults: `gitlab.tokenEnv` → `GITLAB_TOKEN`, `workspaces[].autofix` → `true`, `skills.forceMaxCount` → `3`, `skills.forceMaxChars` → `8000`, `run.maxTickets` → `1`, `run.operatorId` → `local`, `run.lintEnabled` / `run.buildEnabled` → `false`. The returned object includes `workspaceByMappingRepo` and `workspaceById`. See [examples/bug-platform-autofix/operator.example.yaml](../../../examples/bug-platform-autofix/operator.example.yaml) for a full sample.
+
 ## Config
 
 | Key | Default | Meaning |

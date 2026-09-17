@@ -21,7 +21,7 @@ export interface OperatorWorkspace {
   productBranch: string
   /** Must match menu-mapping.json `repo` for this tree. */
   mappingRepo: MappingRepo
-  /** When false, mapping hits for this repo are skipped (home default). */
+  /** When false, mapping hits for this repo are skipped; omitted in yaml defaults to true. */
   autofix: boolean
 }
 
@@ -90,8 +90,10 @@ const DEFAULT_SKILLS_FORCE_MAX_CHARS = 8000
 
 /**
  * Read and validate `operator.yaml` from disk.
- * @param configPath - absolute path to the yaml file.
+ * @param configPath - path to the yaml file (relative or absolute).
  * @returns parsed config with defaults applied.
+ * @throws {Error} when the file is missing (`operator.yaml 不存在: …`), the root is not a
+ *   non-array object, or any required field or enum is invalid.
  */
 export function loadOperatorConfig(configPath: string): OperatorConfig {
   let rawText: string

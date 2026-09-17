@@ -7,6 +7,7 @@ describe('bug-platform-autofix plugin', () => {
     expect(BugPlatformAutofix.inject).toEqual([])
     expect(BugPlatformAutofix.name).toBe('bug-platform-autofix')
     expect(typeof BugPlatformAutofix.loadMenuMapping).toBe('function')
+    expect(typeof BugPlatformAutofix.loadOperatorConfig).toBe('function')
     expect(typeof BugPlatformAutofix.resolveMenu).toBe('function')
     expect(typeof BugPlatformAutofix.selectTickets).toBe('function')
     expect(typeof BugPlatformAutofix.loadState).toBe('function')

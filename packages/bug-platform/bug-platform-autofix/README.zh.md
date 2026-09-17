@@ -4,6 +4,10 @@
 
 面向内部 bug 平台自动修复的库优先辅助：加载 `menu-mapping.json`，将工单的 `target_menu` 解析到 custom／ailpha 工作区命中项，过滤列表行，维护本地 JSON 幂等状态，提供按工作区隔离的 Git 辅助（`assertProductBranch`、`assertClean`、`createBugfixBranch`、`commitAll`、`pushBranch`、`listChangedFiles`，可注入 `RunGit`），可选通过 `createMergeRequest` 创建 GitLab MR，并用 `runOneTicket`／`runBatch` 编排单票或跑批。第一阶段 Cordis `apply` 仅作 Config 桩（`inject` 为空）；编排直接导入辅助函数。
 
+## 值班配置（`operator.yaml`）
+
+`loadOperatorConfig(configPath)` 读取并校验传入路径上的控制台／CLI `operator.yaml`（相对或绝对路径均可）。文件缺失或字段非法时立即抛出 `Error`（例如 `operator.yaml 不存在: …` 或 `operator-config: …` 校验信息）。可选字段省略时使用默认值：`gitlab.tokenEnv` → `GITLAB_TOKEN`，`workspaces[].autofix` → `true`，`skills.forceMaxCount` → `3`，`skills.forceMaxChars` → `8000`，`run.maxTickets` → `1`，`run.operatorId` → `local`，`run.lintEnabled`／`run.buildEnabled` → `false`。返回值提供 `workspaceByMappingRepo` 与 `workspaceById`。完整样例见 [examples/bug-platform-autofix/operator.example.yaml](../../../examples/bug-platform-autofix/operator.example.yaml)。
+
 ## Config
 
 | 键 | 默认值 | 含义 |
