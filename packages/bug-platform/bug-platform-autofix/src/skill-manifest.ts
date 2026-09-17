@@ -46,7 +46,7 @@ export interface ResolveForcedSkillsOptions {
  */
 export function resolveForcedSkills(options: ResolveForcedSkillsOptions): ForcedSkill[] {
   const { globalLocal, workspaceId, autofixWorkspaceIds, forceMaxCount, forceMaxChars } = options
-  const entries = loadManifestEntries(globalLocal)
+  const entries = loadManifest(globalLocal)
   const forcedNames: string[] = []
   for (const entry of entries) {
     if (entry.enabled !== true || entry.force !== true) continue
@@ -77,10 +77,14 @@ export function resolveForcedSkills(options: ResolveForcedSkillsOptions): Forced
 }
 
 /** One validated `manifest.yaml` skill row. */
-interface ManifestSkillEntry {
+export interface ManifestSkillEntry {
+  /** kebab-case name from `manifest.yaml`. */
   name: string
+  /** When false, the skill is neither catalogued nor forced. */
   enabled: boolean
+  /** When true, the skill body is injected into the agent brief. */
   force: boolean
+  /** Empty means every `autofix: true` workspace id. */
   workspaceIds: readonly string[]
 }
 
@@ -88,10 +92,11 @@ interface ManifestSkillEntry {
  * Read and validate `globalLocal/manifest.yaml`.
  * @param globalLocal - clone root.
  * @returns skill rows in file order.
- * @throws {Error} when `skills[].name` is empty or not kebab-case
+ * @throws {Error} when the file is missing, the document is invalid, or a
+ *   `skills[].name` is empty or not kebab-case
  *   (`/^[a-z0-9]+(?:-[a-z0-9]+)*$/`), so `path.join(..., name)` cannot leave `skills/`.
  */
-function loadManifestEntries(globalLocal: string): ManifestSkillEntry[] {
+export function loadManifest(globalLocal: string): ManifestSkillEntry[] {
   const manifestPath = join(globalLocal, 'manifest.yaml')
   let rawText: string
   try {

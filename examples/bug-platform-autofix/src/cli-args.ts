@@ -37,6 +37,11 @@ export interface RunOnceArgs {
    * Incompatible with `--ticket` / `--tickets` and with `--poll-interval`.
    */
   continuous?: boolean
+  /**
+   * When true, a HEAD that does not match `origin/main` is allowed for the
+   * global skill clone. Dirty `manifest.yaml` or force skill files still refuse.
+   */
+  allowStaleGlobalSkills?: boolean
 }
 
 /** Default idle wait when `--continuous` sees an empty candidate batch. */
@@ -44,7 +49,7 @@ export const DEFAULT_EMPTY_BATCH_BACKOFF_SECONDS = 60
 
 /**
  * Parse `--config`, `--ticket`, `--tickets`, `--max`, `--status`, `--poll-interval`,
- * and `--continuous` from `process.argv`-style args.
+ * `--continuous`, and `--allow-stale-global-skills` from `process.argv`-style args.
  * Force paths (`--ticket` / `--tickets`) are mutually exclusive with `--max`,
  * `--poll-interval`, and `--continuous`.
  * @param argv - full argv including node and script path.
@@ -58,6 +63,7 @@ export function parseRunOnceArgs(argv: readonly string[]): RunOnceArgs {
   const statusRaw = flagValue(argv, '--status')
   const pollRaw = flagValue(argv, '--poll-interval')
   const continuous = argv.includes('--continuous')
+  const allowStaleGlobalSkills = argv.includes('--allow-stale-global-skills')
 
   if (ticketRaw !== undefined && ticketsRaw !== undefined) {
     throw new Error('不能同时使用 --ticket 与 --tickets：单用 --ticket <id>，多用 --tickets <id,id,…>')
@@ -113,6 +119,10 @@ export function parseRunOnceArgs(argv: readonly string[]): RunOnceArgs {
       throw new Error('--continuous 仅用于白名单守护循环，不能与 --ticket/--tickets 同用')
     }
     result.continuous = true
+  }
+
+  if (allowStaleGlobalSkills) {
+    result.allowStaleGlobalSkills = true
   }
 
   return result

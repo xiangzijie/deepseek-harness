@@ -27,6 +27,8 @@ Each local root (`dkh-custom`, `dkh-ailpha`, `dkh-home`) binds one product jinan
 
 `lintEnabled` and `buildEnabled` default **off**. `GITLAB_TOKEN` is optional. Missing token or push/ensure-MR failure keeps platform status `处理中`, records `phase=awaiting_push`. Successful push keeps platform status **`处理中`** (followup includes MR URL) and must **not** claim `现场验证`; human review merges the MR.
 
+`run-once` holds the progress-file lock, then calls `assertGlobalSkillsRunnable` before workspace inspection or tickets: a dirty force skill file or `manifest.yaml` refuses to start even with `--allow-stale-global-skills`; HEAD that does not match `origin/main` refuses unless that flag is set. A missing global clone with force names fails the process (stderr, exit code 1) instead of skip-unclaimed every ticket.
+
 `run-once` calls `inspectAutofixWorkspaces` after constructing orchestrator config and before any ticket run. That helper inspects every `autofix: true` workspace via `inspectWorkspace`. The check verifies the directory exists, `.git` exists, HEAD is the bound jinan or `bugfix/<digits>`, porcelain is clean, and origin hostname matches `gitlab.host`. It does not call the GitLab HTTP API to look up project path. Any failure sets process exit code 1 and prints `id: 原因` on stderr.
 
 After each successful push, orchestration **ensures** the MR (create, or reuse on conflict), adds an MR note, and writes a platform followup (`处理中` with MR / commit / summary; never `现场验证`). A second pass on the same `bugfix/<id>` therefore still updates bug-platform处理记录 and MR discussion instead of failing solely because the MR already exists. Force `--ticket` / `--tickets` may retry `done` / `awaiting_push` / `failed`; only local `claimed` / `fixing` block.

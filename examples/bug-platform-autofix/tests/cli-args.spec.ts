@@ -90,6 +90,16 @@ describe('parseRunOnceArgs', () => {
     })
   })
 
+  it('parses --allow-stale-global-skills', () => {
+    expect(
+      parseRunOnceArgs(['node', 'run-once.ts', '--max', '1', '--allow-stale-global-skills']),
+    ).toEqual({
+      ticketIds: [],
+      maxTickets: 1,
+      allowStaleGlobalSkills: true,
+    })
+  })
+
   it('rejects --poll-interval together with --continuous', () => {
     expect(() =>
       parseRunOnceArgs(['node', 'run-once.ts', '--poll-interval', '60', '--continuous']),

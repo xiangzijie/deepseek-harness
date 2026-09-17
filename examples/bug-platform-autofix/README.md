@@ -103,7 +103,7 @@ node --import tsx/esm examples/bug-platform-autofix/src/run-once.ts --config <pa
 3. 在任务「常规」勾选「不管用户是否登录都要运行」时，请在任务里配置环境变量，或改用包装 `.ps1` 先 `$env:…=` 再调用 `node`。
 4. 守护模式也可用任务「开机启动一次」+ `--poll-interval`；不要同时开多个守护进程抢同一 `state.json`／产品工作区。
 
-`--ticket` / `--tickets` 走强制路径（绕过列表**状态**白名单），仍会排除 `网络安全数据大屏`／`网络安全指挥大屏`、home、无映射；**不能**与 `--max` / `--status` / `--poll-interval` 同用；`--ticket` 与 `--tickets` 也互斥。本地 `state.json` 中仍处于进行中 phase 的单会跳过。`--max` 只影响白名单跑批；省略时用 yaml `run.maxTickets`。
+`--ticket` / `--tickets` 走强制路径（绕过列表**状态**白名单），仍会排除 `网络安全数据大屏`／`网络安全指挥大屏`、home、无映射；**不能**与 `--max` / `--status` / `--poll-interval` 同用；`--ticket` 与 `--tickets` 也互斥。本地 `state.json` 中仍处于进行中 phase 的单会跳过。`--max` 只影响白名单跑批；省略时用 yaml `run.maxTickets`。`--allow-stale-global-skills` 允许 HEAD 落后 `origin/main` 仍开跑；强制 skill 文件或 `manifest.yaml` 有未提交变更时仍拒绝。
 
 ### 运维：误领单改回「待确认」
 

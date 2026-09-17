@@ -9,9 +9,11 @@ import { fileURLToPath } from 'node:url'
 import { BugPlatformClient } from '@deepseek-ai/dsh-bug-platform-http'
 import {
   acquireRunLock,
+  assertGlobalSkillsRunnable,
   createDefaultAgentRunner,
   defaultRunGit,
   inspectAutofixWorkspaces,
+  loadManifest,
   loadMenuMapping,
   loadOperatorConfig,
   loadState,
@@ -142,6 +144,34 @@ async function printAutofixWorkspaceHealth(
 }
 
 /**
+ * Fail the process before workspace inspection when any `force: true` skill
+ * would inject from a missing, dirty, or unsynced global clone.
+ * A missing clone cannot list force names; the call still fails the process
+ * so tickets are not all skip-unclaimed.
+ * @param cfg - parsed operator.yaml.
+ * @param allowStaleRevision - `--allow-stale-global-skills`.
+ * @param runGit - same git runner the orchestrator will use.
+ */
+async function assertForcedGlobalSkillsReady(
+  cfg: OperatorConfig,
+  allowStaleRevision: boolean,
+  runGit: typeof defaultRunGit,
+): Promise<void> {
+  const globalLocal = cfg.skills.globalLocal
+  const forceNames = existsSync(globalLocal)
+    ? loadManifest(globalLocal)
+        .filter(entry => entry.force === true)
+        .map(entry => entry.name)
+    : ['missing-clone']
+  await assertGlobalSkillsRunnable({
+    globalLocal,
+    forceNames,
+    allowStaleRevision,
+    runGit,
+  })
+}
+
+/**
  * Read GitLab token from yaml `gitlab.tokenEnv`, then `GITLAB_TOKEN`.
  * @param tokenEnv - env var name from operator.yaml.
  * @returns trimmed token, or null when both are unset.
@@ -248,6 +278,11 @@ async function runWithLock(
   pollIntervalSeconds: number | undefined,
   continuous: boolean | undefined,
 ): Promise<void> {
+  await assertForcedGlobalSkillsReady(
+    cfg,
+    args.allowStaleGlobalSkills === true,
+    defaultRunGit,
+  )
   const { custom, ailpha, home } = requireProductWorkspaces(cfg)
   const maxTickets = args.maxTickets ?? cfg.run.maxTickets
 

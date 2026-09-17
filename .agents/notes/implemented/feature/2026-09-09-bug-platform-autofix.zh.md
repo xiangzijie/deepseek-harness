@@ -27,6 +27,8 @@ Status: implemented
 
 `lintEnabled` 与 `buildEnabled` **默认关闭**。`GITLAB_TOKEN` 可选。无 token 或 push／ensure MR 失败时，平台保持 `处理中`，本地记 `phase=awaiting_push`。push 成功时平台状态仍为 **`处理中`**（跟进含 MR 链接），**不得**标 `现场验证`；由人工审阅合入。
 
+`run-once` 持有进度锁后、检查工作区或开跑工单之前调用 `assertGlobalSkillsRunnable`：强制 skill 文件或 `manifest.yaml` 有未提交变更时即使带 `--allow-stale-global-skills` 也拒绝开跑；HEAD 与 `origin/main` 不一致时除非该 flag 否则拒绝。全局仓缺失且需要强制 skill 时进程以 stderr、退出码 1 失败，而不是把每张单都 skip-unclaimed。
+
 `run-once` 在构造编排配置之后、开跑任何工单之前调用 `inspectAutofixWorkspaces`。该辅助对每个 `autofix: true` 工作区走 `inspectWorkspace`。检查项为：目录存在、`.git` 存在、HEAD 为绑定 jinan 或 `bugfix/<digits>`、porcelain 干净、origin hostname 与 `gitlab.host` 一致。该检查不调用 GitLab HTTP API 查询项目 path。任一失败则进程退出码 1，并向 stderr 打印 `id: 原因`。
 
 每次 push 成功后，编排 **ensure** MR（创建或冲突时复用）、写 MR note，并写平台 followup（`处理中`，含 MR／commit／摘要）。同一 `bugfix/<id>` 的再次修复因此仍更新平台处理记录与 MR 讨论，不会仅因「MR 已存在」失败。强制 `--ticket`／`--tickets` 可重跑 `done`／`awaiting_push`／`failed`；仅本地 `claimed`／`fixing` 会拦住。
