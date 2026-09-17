@@ -4,6 +4,7 @@
  */
 
 import { resolveMenu, type MenuMappingIndex } from './menu-mapping.ts'
+import type { OperatorWorkspace } from './operator-config.ts'
 import type { TicketStateStore } from './ticket-state.ts'
 
 /** Minimal list-row fields required by {@link selectTickets}. */
@@ -54,6 +55,12 @@ export interface SelectTicketsOptions {
    * auto-assigned them).
    */
   alsoAssignedTo?: readonly number[]
+  /**
+   * When set, drop tickets whose `resolveMenu` hit maps to a workspace with
+   * `autofix: false`. Omitted keeps mapped custom/ailpha (tests / callers that
+   * have not loaded operator workspaces).
+   */
+  workspaces?: readonly Pick<OperatorWorkspace, 'mappingRepo' | 'autofix'>[]
 }
 
 /**
@@ -61,7 +68,7 @@ export interface SelectTicketsOptions {
  * @param tickets - platform list rows (or compatible summaries).
  * @param index - menu mapping index from {@link loadMenuMapping}.
  * @param store - local idempotency store; active and pre-claim `skipped` phases are skipped.
- * @param options - optional status allow-list and self-assignee ids.
+ * @param options - optional status allow-list, self-assignee ids, and workspaces.
  * @returns tickets that pass every selection rule, in input order.
  */
 export function selectTickets(
@@ -82,8 +89,15 @@ export function selectTickets(
     if (ticket.target_menu === null || isExcludedTargetMenu(ticket.target_menu)) {
       return false
     }
-    if (resolveMenu(index, ticket.target_menu) === null) {
+    const resolved = resolveMenu(index, ticket.target_menu)
+    if (resolved === null) {
       return false
+    }
+    if (options?.workspaces !== undefined) {
+      const workspace = options.workspaces.find(ws => ws.mappingRepo === resolved.repo)
+      if (workspace !== undefined && workspace.autofix === false) {
+        return false
+      }
     }
     if (store.isActiveTicket(ticket.id)) {
       return false

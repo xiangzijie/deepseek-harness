@@ -1,6 +1,7 @@
 /**
  * Local workspace diagnosis for bug-platform autofix: directory, `.git`, HEAD,
- * clean porcelain, and origin hostname vs `gitlab.host`. Does not call GitLab HTTP.
+ * clean porcelain, origin hostname vs `gitlab.host`, and aggregation over
+ * `autofix: true` workspaces. Does not call GitLab HTTP.
  *
  * @module @deepseek-ai/dsh-bug-platform-autofix/workspace-health
  */
@@ -8,6 +9,7 @@
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 import type { RunGit } from './git-workspace.ts'
+import type { OperatorWorkspace } from './operator-config.ts'
 
 /** Result of {@link inspectWorkspace}. */
 export type WorkspaceHealthReport = {
@@ -42,6 +44,29 @@ export type InspectWorkspaceOptions = {
    * `true` pretends `.git` exists; `false` forces the missing-git reason.
    */
   isGit?: boolean
+}
+
+/** Aggregated health for every `autofix: true` workspace. */
+export type AutofixWorkspacesHealth = {
+  /** True when every inspected workspace passed. */
+  ok: boolean
+  /** Operator-facing `id: 原因` lines; empty when {@link AutofixWorkspacesHealth.ok} is true. */
+  lines: string[]
+}
+
+/** Inputs for {@link inspectAutofixWorkspaces}. */
+export type InspectAutofixWorkspacesOptions = {
+  /** Operator workspaces; only `autofix: true` entries are inspected. */
+  workspaces: readonly OperatorWorkspace[]
+  /** GitLab origin from operator.yaml `gitlab.host`. */
+  gitlabHost: string
+  /** Injectable git runner forwarded to {@link inspectWorkspace}. */
+  runGit: RunGit
+  /**
+   * Test hook: replace {@link inspectWorkspace}. Production omits this and
+   * uses the real inspector.
+   */
+  inspectOne?: (opts: InspectWorkspaceOptions) => Promise<WorkspaceHealthReport>
 }
 
 const BUGFIX_HEAD = /^bugfix\/\d+$/
@@ -98,6 +123,36 @@ export async function inspectWorkspace(
   }
 
   return { ok: reasons.length === 0, reasons }
+}
+
+/**
+ * Inspect every `autofix: true` workspace and collect `id: 原因` lines.
+ * `autofix: false` workspaces are not inspected.
+ * @param opts - workspaces, gitlab host, git runner, optional inspect hook.
+ * @returns `{ ok, lines }` — `ok` is false when any inspected workspace failed.
+ */
+export async function inspectAutofixWorkspaces(
+  opts: InspectAutofixWorkspacesOptions,
+): Promise<AutofixWorkspacesHealth> {
+  const inspectOne = opts.inspectOne ?? inspectWorkspace
+  const lines: string[] = []
+  let ok = true
+  for (const ws of opts.workspaces) {
+    if (ws.autofix !== true) continue
+    const report = await inspectOne({
+      localRoot: ws.localRoot,
+      productBranch: ws.productBranch,
+      gitlabHost: opts.gitlabHost,
+      gitlabProjectId: ws.gitlabProjectId,
+      runGit: opts.runGit,
+    })
+    if (report.ok) continue
+    ok = false
+    for (const reason of report.reasons) {
+      lines.push(`${ws.id}: ${reason}`)
+    }
+  }
+  return { ok, lines }
 }
 
 /**

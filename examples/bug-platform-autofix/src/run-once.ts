@@ -11,7 +11,7 @@ import {
   acquireRunLock,
   createDefaultAgentRunner,
   defaultRunGit,
-  inspectWorkspace,
+  inspectAutofixWorkspaces,
   loadMenuMapping,
   loadOperatorConfig,
   loadState,
@@ -121,32 +121,24 @@ function requireProductWorkspaces(cfg: OperatorConfig): {
 }
 
 /**
- * Inspect every `autofix: true` workspace; print `id: 原因` on failure.
+ * Print aggregated `id: 原因` lines for every failing `autofix: true` workspace.
  * @param cfg - parsed operator.yaml.
  * @param runGit - same git runner the orchestrator will use.
  * @returns true when every inspected workspace is healthy.
  */
-async function inspectAutofixWorkspaces(
+async function printAutofixWorkspaceHealth(
   cfg: OperatorConfig,
   runGit: typeof defaultRunGit,
 ): Promise<boolean> {
-  let ok = true
-  for (const ws of cfg.workspaces) {
-    if (ws.autofix !== true) continue
-    const report = await inspectWorkspace({
-      localRoot: ws.localRoot,
-      productBranch: ws.productBranch,
-      gitlabHost: cfg.gitlab.host,
-      gitlabProjectId: ws.gitlabProjectId,
-      runGit,
-    })
-    if (report.ok) continue
-    ok = false
-    for (const reason of report.reasons) {
-      process.stderr.write(`${ws.id}: ${reason}\n`)
-    }
+  const health = await inspectAutofixWorkspaces({
+    workspaces: cfg.workspaces,
+    gitlabHost: cfg.gitlab.host,
+    runGit,
+  })
+  for (const line of health.lines) {
+    process.stderr.write(`${line}\n`)
   }
-  return ok
+  return health.ok
 }
 
 /**
@@ -311,7 +303,7 @@ async function runWithLock(
     agentRunner: createDefaultAgentRunner({ harnessRoot: cfg.harnessRoot }),
   }
 
-  const healthOk = await inspectAutofixWorkspaces(cfg, config.runGit ?? defaultRunGit)
+  const healthOk = await printAutofixWorkspaceHealth(cfg, config.runGit ?? defaultRunGit)
   if (!healthOk) {
     process.exitCode = 1
     return

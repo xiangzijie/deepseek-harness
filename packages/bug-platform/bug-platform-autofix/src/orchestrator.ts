@@ -472,6 +472,7 @@ export async function runBatch(
   const selfId = config.client.getLoggedInUserId?.()
   const candidates = selectTickets(collected, config.menuIndex, config.stateStore, {
     alsoAssignedTo: selfId === undefined ? [] : [selfId],
+    workspaces: resolveWorkspaces(config),
   })
   const planned = candidates.slice(0, maxTickets)
   options.onQueue?.(planned.map(row => row.id))

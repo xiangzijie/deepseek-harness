@@ -2,7 +2,11 @@ import { mkdtempSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { inspectWorkspace } from '../src/workspace-health.ts'
+import type { OperatorWorkspace } from '../src/operator-config.ts'
+import {
+  inspectAutofixWorkspaces,
+  inspectWorkspace,
+} from '../src/workspace-health.ts'
 
 const GITLAB_HOST = 'http://gitlab.example'
 const PROJECT_ID = 8325
@@ -275,5 +279,53 @@ describe('inspectWorkspace', () => {
     })
     expect(report.ok).toBe(false)
     expect(report.reasons.join('\n')).toMatch(/origin/)
+  })
+})
+
+function workspace(partial: Partial<OperatorWorkspace> & Pick<OperatorWorkspace, 'id'>): OperatorWorkspace {
+  return {
+    localRoot: `D:/${partial.id}`,
+    gitlabProjectId: PROJECT_ID,
+    productBranch: PRODUCT_BRANCH,
+    mappingRepo: 'custom',
+    autofix: true,
+    ...partial,
+  }
+}
+
+describe('inspectAutofixWorkspaces', () => {
+  it('skips autofix:false workspaces and does not inspect them', async () => {
+    const inspected: string[] = []
+    const result = await inspectAutofixWorkspaces({
+      workspaces: [
+        workspace({ id: 'home', mappingRepo: 'home', autofix: false }),
+        workspace({ id: 'custom', mappingRepo: 'custom', autofix: true }),
+      ],
+      gitlabHost: GITLAB_HOST,
+      runGit: async () => '',
+      inspectOne: async (opts) => {
+        inspected.push(opts.localRoot)
+        return { ok: true, reasons: [] }
+      },
+    })
+    expect(inspected).toEqual(['D:/custom'])
+    expect(result.ok).toBe(true)
+    expect(result.lines).toEqual([])
+  })
+
+  it('collects id: 原因 lines when an autofix workspace fails without running tickets', async () => {
+    const result = await inspectAutofixWorkspaces({
+      workspaces: [workspace({ id: 'custom', autofix: true })],
+      gitlabHost: GITLAB_HOST,
+      runGit: async () => {
+        throw new Error('tickets must not run')
+      },
+      inspectOne: async () => ({
+        ok: false,
+        reasons: ['目录不存在', '工作区有未提交变更'],
+      }),
+    })
+    expect(result.ok).toBe(false)
+    expect(result.lines).toEqual(['custom: 目录不存在', 'custom: 工作区有未提交变更'])
   })
 })

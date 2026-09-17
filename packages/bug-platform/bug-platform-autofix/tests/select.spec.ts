@@ -162,4 +162,22 @@ describe('selectTickets', () => {
     )
     expect(selected.map(t => t.id)).toEqual([13, 14, 15])
   })
+
+  it('drops tickets mapped to a workspace with autofix: false', () => {
+    const selected = selectTickets(
+      [
+        ticket({ id: 1, target_menu: '支撑单位' }),
+        ticket({ id: 2, target_menu: '流量监测' }),
+      ],
+      index,
+      new TicketStateStore(),
+      {
+        workspaces: [
+          { mappingRepo: 'custom', autofix: false },
+          { mappingRepo: 'ailpha', autofix: true },
+        ],
+      },
+    )
+    expect(selected.map(t => t.id)).toEqual([2])
+  })
 })

@@ -812,4 +812,35 @@ describe('runBatch', () => {
       'end:2/2#2:failed',
     ])
   })
+
+  it('does not plan mapped custom tickets when that workspace has autofix: false', async () => {
+    const rows = [detail({ id: 1, target_menu: '资产核查', status: '待确认' })]
+    const { client, order, followups } = fakeClient({
+      listTickets: async () => rows,
+      getTicket: async id => rows.find(r => r.id === id)!,
+    })
+    const agentRunner = vi.fn(async () => ({ ok: true, summary: 'should-not-run' }))
+    let queued: number[] | undefined
+
+    const outcomes = await runBatch(
+      baseConfig({
+        client,
+        agentRunner,
+        workspaces: twoRepoWorkspaces(false),
+      }),
+      {
+        maxTickets: 1,
+        onQueue: (ids) => {
+          queued = [...ids]
+        },
+      },
+    )
+
+    expect(queued).toEqual([])
+    expect(outcomes).toEqual([])
+    expect(followups).toHaveLength(0)
+    expect(order.some(s => s.includes('处理中'))).toBe(false)
+    expect(order.some(s => s.startsWith('getTicket:'))).toBe(false)
+    expect(agentRunner).not.toHaveBeenCalled()
+  })
 })

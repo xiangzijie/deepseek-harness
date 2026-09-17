@@ -28,8 +28,13 @@ export { loadOperatorConfig } from './operator-config.ts'
 export type { AcquireRunLockOptions, RunLockInfo } from './run-lock.ts'
 export { acquireRunLock, readRunLock, runLockPath } from './run-lock.ts'
 
-export type { InspectWorkspaceOptions, WorkspaceHealthReport } from './workspace-health.ts'
-export { inspectWorkspace } from './workspace-health.ts'
+export type {
+  AutofixWorkspacesHealth,
+  InspectAutofixWorkspacesOptions,
+  InspectWorkspaceOptions,
+  WorkspaceHealthReport,
+} from './workspace-health.ts'
+export { inspectAutofixWorkspaces, inspectWorkspace } from './workspace-health.ts'
 
 export type { SelectableTicket, SelectTicketsOptions } from './select.ts'
 export {
