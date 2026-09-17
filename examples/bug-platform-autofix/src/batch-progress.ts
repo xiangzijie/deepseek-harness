@@ -34,6 +34,8 @@ export interface ProgressSnapshot {
   current: ProgressCurrent | null
   completed: ProgressCompletedEntry[]
   updatedAt: string
+  /** Holding process id for display; the mutex is `dirname(path)/run.lock`. */
+  pid?: number
 }
 
 /** Injectable deps for tests. */
@@ -186,6 +188,7 @@ export class BatchProgress {
       current: this.current,
       completed: [...this.completed],
       updatedAt: new Date(this.now()).toISOString(),
+      pid: process.pid,
     }
     mkdirSync(dirname(this.path), { recursive: true })
     writeFileSync(this.path, `${JSON.stringify(snapshot, null, 2)}\n`, 'utf8')

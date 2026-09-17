@@ -8,11 +8,13 @@ import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { BugPlatformClient } from '@deepseek-ai/dsh-bug-platform-http'
 import {
+  acquireRunLock,
   createDefaultAgentRunner,
   loadMenuMapping,
   loadOperatorConfig,
   loadState,
   runBatch,
+  runLockPath,
   runOneTicket,
   saveState,
   type OperatorConfig,
@@ -188,7 +190,41 @@ async function main(): Promise<void> {
 
   const args = parseRunOnceArgs(process.argv)
   const { ticketIds, status, pollIntervalSeconds, continuous } = args
-  const cfg = loadOperatorConfig(resolveOperatorConfigPath(args.configPath))
+  const configPath = resolveOperatorConfigPath(args.configPath)
+  const cfg = loadOperatorConfig(configPath)
+  const progressPath = cfg.progressFile
+  const releaseLock = acquireRunLock(runLockPath(progressPath), {
+    pid: process.pid,
+    startedAt: new Date().toISOString(),
+    configPath,
+    progressFile: progressPath,
+  })
+  try {
+    await runWithLock(args, cfg, progressPath, ticketIds, status, pollIntervalSeconds, continuous)
+  } finally {
+    releaseLock()
+  }
+}
+
+/**
+ * Force / whitelist / poll work after the progress-file lock is held.
+ * @param args - parsed CLI args (maxTickets may be omitted).
+ * @param cfg - validated operator.yaml.
+ * @param progressPath - yaml `progressFile` (also the lock's cited path).
+ * @param ticketIds - forced ticket ids; empty means whitelist batch.
+ * @param status - optional list status override.
+ * @param pollIntervalSeconds - timed poll interval when set.
+ * @param continuous - true for empty-batch backoff looping.
+ */
+async function runWithLock(
+  args: ReturnType<typeof parseRunOnceArgs>,
+  cfg: OperatorConfig,
+  progressPath: string,
+  ticketIds: number[],
+  status: string | undefined,
+  pollIntervalSeconds: number | undefined,
+  continuous: boolean | undefined,
+): Promise<void> {
   const { custom, ailpha, home } = requireProductWorkspaces(cfg)
   const maxTickets = args.maxTickets ?? cfg.run.maxTickets
 
@@ -203,7 +239,6 @@ async function main(): Promise<void> {
 
   const mappingPath = cfg.mappingFile
   const statePath = cfg.stateFile
-  const progressPath = cfg.progressFile
   const assetsDir = cfg.assetsDir
 
   const menuIndex = loadMenuMapping(JSON.parse(readFileSync(mappingPath, 'utf8')) as unknown)

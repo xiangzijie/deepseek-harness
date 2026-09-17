@@ -1,9 +1,9 @@
 /**
  * `@deepseek-ai/dsh-bug-platform-autofix`: library-first menu mapping, ticket
  * selection, local idempotency, per-worktree Git helpers, optional GitLab MR
- * creation, and the §3 orchestrator (`runOneTicket` / `runBatch`) for internal
- * bug-platform autofix. Cordis `apply` validates Config only; callers import
- * helpers directly.
+ * creation, a progress-file run lock, and the §3 orchestrator (`runOneTicket` /
+ * `runBatch`) for internal bug-platform autofix. Cordis `apply` validates Config
+ * only; callers import helpers directly.
  *
  * @module @deepseek-ai/dsh-bug-platform-autofix
  */
@@ -24,6 +24,9 @@ export type {
   OperatorWorkspace,
 } from './operator-config.ts'
 export { loadOperatorConfig } from './operator-config.ts'
+
+export type { AcquireRunLockOptions, RunLockInfo } from './run-lock.ts'
+export { acquireRunLock, readRunLock, runLockPath } from './run-lock.ts'
 
 export type { SelectableTicket, SelectTicketsOptions } from './select.ts'
 export {

@@ -29,7 +29,7 @@ Status: implemented
 
 每次 push 成功后，编排 **ensure** MR（创建或冲突时复用）、写 MR note，并写平台 followup（`处理中`，含 MR／commit／摘要）。同一 `bugfix/<id>` 的再次修复因此仍更新平台处理记录与 MR 讨论，不会仅因「MR 已存在」失败。强制 `--ticket`／`--tickets` 可重跑 `done`／`awaiting_push`／`failed`；仅本地 `claimed`／`fixing` 会拦住。
 
-默认 agent runner 在 `harnessRoot` 下经 tsx 拉起 harness `apps/cli`，cwd 为产品工作区——禁止在产品仓内 `pnpm dsh`。示例支持 `--poll-interval <秒>` 串行守护轮询（二期第 1 项部分落地）；亦可用 Windows 任务计划周期性拉起 `--max 1`。运维入口 `reset-to-pending.ts` 可将单批量改回「待确认」（`--tickets`，或不写则取本地 `phase=failed`），写跟进并清本地 state，不跑 agent。跑批进度：终端打印队列与 `[i/n]`，并写 `progress.json`。
+默认 agent runner 在 `harnessRoot` 下经 tsx 拉起 harness `apps/cli`，cwd 为产品工作区——禁止在产品仓内 `pnpm dsh`。示例支持 `--poll-interval <秒>` 串行守护轮询（二期第 1 项部分落地）；亦可用 Windows 任务计划周期性拉起 `--max 1`。运维入口 `reset-to-pending.ts` 可将单批量改回「待确认」（`--tickets`，或不写则取本地 `phase=failed`），写跟进并清本地 state，不跑 agent。跑批进度：终端打印队列与 `[i/n]`，并写 `progress.json`（可选展示 `pid`）。`run-once` 在强制／白名单／轮询整段生命周期持有 `dirname(progressFile)/run.lock`：存活 holder pid 以 `已有跑批（pid=<n>），progressFile=<path>` 失败；`ESRCH` 视为过期并替换；`EPERM` 视为仍存活，不得抢占。
 
 ### 上下文不足／非前端时停止
 
@@ -57,4 +57,4 @@ Status: implemented
 
 ## 后果
 
-一期交付可手动触发的库优先路径，已能开出真实 GitLab MR 并回写平台 followup；代价是轮询、并发、完整 seam、session 记录的 brief 与经验沉淀仍推迟。无共享锁时重叠手动跑批仍可能争用同一未指派单（本地状态文件只保护遵守它的单进程）。默认跳过 lint／build 可能推送损坏 diff，需操作员开启按路径 lint。再次修单会更新平台与 MR 记录，但错误产品合入仍须人审后再进 jinan。
+一期交付可手动触发的库优先路径，已能开出真实 GitLab MR 并回写平台 followup；代价是轮询、并发、完整 seam、session 记录的 brief 与经验沉淀仍推迟。共享同一 `progressFile` 的两个 `run-once` 进程不能重叠：第二个存活 pid 在领单前失败。默认跳过 lint／build 可能推送损坏 diff，需操作员开启按路径 lint。再次修单会更新平台与 MR 记录，但错误产品合入仍须人审后再进 jinan。

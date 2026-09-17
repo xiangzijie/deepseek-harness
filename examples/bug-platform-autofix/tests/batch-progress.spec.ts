@@ -40,6 +40,7 @@ describe('BatchProgress', () => {
     expect(snap.pending).toEqual([10, 20, 30])
     expect(snap.current).toBeNull()
     expect(snap.completed).toEqual([])
+    expect(snap.pid).toBe(process.pid)
   })
 
   it('marks current on startTicket and moves to completed on finishTicket', () => {

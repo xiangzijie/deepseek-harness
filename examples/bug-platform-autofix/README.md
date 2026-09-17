@@ -36,7 +36,7 @@ Copy-Item .env.example .env
 
 ### 进度可见性
 
-跑批会在终端打印队列、`[i/n] 开始/结束 #id`，并每隔 30s 心跳「仍在处理 #id」；同时写入 yaml `progressFile`（`current` / `pending` / `completed`）。另开终端可 `Get-Content` 该路径。
+跑批会在终端打印队列、`[i/n] 开始/结束 #id`，并每隔 30s 心跳「仍在处理 #id」；同时写入 yaml `progressFile`（`current` / `pending` / `completed`，以及展示用 `pid`）。同一 `progressFile` 同时只允许一个 `run-once` 进程：互斥文件是 `dirname(progressFile)/run.lock`，第二个存活进程以 `已有跑批（pid=<n>），progressFile=<path>` 失败退出。另开终端可 `Get-Content` 该进度路径。
 
 ### Windows：从用户环境读取 `GITLAB_TOKEN`
 

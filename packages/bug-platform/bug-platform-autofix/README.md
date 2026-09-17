@@ -8,6 +8,10 @@ Library-first helpers for internal bug-platform autofix: load `menu-mapping.json
 
 `loadOperatorConfig(configPath)` reads and validates the console/CLI `operator.yaml` at the path you pass (relative or absolute). Missing files and invalid shapes fail loud with an `Error` (for example `operator.yaml 不存在: …` or `operator-config: …` validation messages). Omitted optional fields receive defaults: `gitlab.tokenEnv` → `GITLAB_TOKEN`, `workspaces[].autofix` → `true`, `skills.forceMaxCount` → `3`, `skills.forceMaxChars` → `8000`, `run.maxTickets` → `1`, `run.operatorId` → `local`, `run.lintEnabled` / `run.buildEnabled` → `false`. The returned object includes `workspaceByMappingRepo` and `workspaceById`. See [examples/bug-platform-autofix/operator.example.yaml](../../../examples/bug-platform-autofix/operator.example.yaml) for a full sample.
 
+## Run lock
+
+`acquireRunLock(lockPath, info)` writes `{ pid, startedAt, configPath }` to `dirname(progressFile)/run.lock`. A second live pid throws `已有跑批（pid=<n>），progressFile=<path>`. `process.kill(pid, 0)` reporting `ESRCH` is stale and is replaced; `EPERM` is live and is not stolen. `readRunLock` returns that document or `undefined`. The returned `release()` deletes the file. `runLockPath(progressFile)` is the lock path helper. The example `run-once` holds this lock for the whole force / whitelist / poll process.
+
 ## Config
 
 | Key | Default | Meaning |

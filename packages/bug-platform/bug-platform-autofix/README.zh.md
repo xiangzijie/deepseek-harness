@@ -8,6 +8,10 @@
 
 `loadOperatorConfig(configPath)` 读取并校验传入路径上的控制台／CLI `operator.yaml`（相对或绝对路径均可）。文件缺失或字段非法时立即抛出 `Error`（例如 `operator.yaml 不存在: …` 或 `operator-config: …` 校验信息）。可选字段省略时使用默认值：`gitlab.tokenEnv` → `GITLAB_TOKEN`，`workspaces[].autofix` → `true`，`skills.forceMaxCount` → `3`，`skills.forceMaxChars` → `8000`，`run.maxTickets` → `1`，`run.operatorId` → `local`，`run.lintEnabled`／`run.buildEnabled` → `false`。返回值提供 `workspaceByMappingRepo` 与 `workspaceById`。完整样例见 [examples/bug-platform-autofix/operator.example.yaml](../../../examples/bug-platform-autofix/operator.example.yaml)。
 
+## 跑批锁
+
+`acquireRunLock(lockPath, info)` 把 `{ pid, startedAt, configPath }` 写到 `dirname(progressFile)/run.lock`。第二个存活 pid 抛出 `已有跑批（pid=<n>），progressFile=<path>`。`process.kill(pid, 0)` 报 `ESRCH` 视为过期并替换；`EPERM` 视为仍存活，不得抢占。`readRunLock` 返回该文档或 `undefined`。返回的 `release()` 删除该文件。`runLockPath(progressFile)` 是锁路径辅助。示例 `run-once` 在强制／白名单／轮询整段生命周期持有此锁。
+
 ## Config
 
 | 键 | 默认值 | 含义 |
