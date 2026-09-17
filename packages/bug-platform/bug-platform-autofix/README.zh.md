@@ -8,6 +8,10 @@
 
 `loadOperatorConfig(configPath)` 读取并校验传入路径上的控制台／CLI `operator.yaml`（相对或绝对路径均可）。文件缺失或字段非法时立即抛出 `Error`（例如 `operator.yaml 不存在: …` 或 `operator-config: …` 校验信息）。每个工作区必须有自己的 `gitlabProjectId`；GitLab MR 创建／复用使用该 id。可选字段省略时使用默认值：`gitlab.tokenEnv` → `GITLAB_TOKEN`，`workspaces[].autofix` → `true`，`skills.forceMaxCount` → `3`，`skills.forceMaxChars` → `8000`，`run.maxTickets` → `1`，`run.operatorId` → `local`，`run.lintEnabled`／`run.buildEnabled` → `false`。返回值提供 `workspaceByMappingRepo` 与 `workspaceById`。完整样例见 [examples/bug-platform-autofix/operator.example.yaml](../../../examples/bug-platform-autofix/operator.example.yaml)。
 
+## 个人 skill 上传
+
+`validateSkillUpload` 只接受 UTF-8 Markdown，且 `name` 为 kebab-case、`description` 非空；拒绝 `scripts/` 路径、非 `.md` 文件名、NUL 字节、ZIP 魔数（文件头 `PK`）以及个人上传的 `force: true`。`writePersonalSkill` 仅在 `operatorId` 与 `name` 均为 kebab-case、且解析后的目录仍位于 `personalRoot` 之下时，写入 `personalRoot/operatorId/<name>/SKILL.md`；否则抛错。调用方不得假定已经跑过 `validateSkillUpload` 而跳过该检查。
+
 ## 跑批锁
 
 `acquireRunLock(lockPath, info)` 把 `{ pid, startedAt, configPath }` 写到 `dirname(progressFile)/run.lock`。第二个存活 pid 抛出 `已有跑批（pid=<n>），progressFile=<path>`。`process.kill(pid, 0)` 报 `ESRCH` 视为过期并替换；`EPERM` 视为仍存活，不得抢占。`readRunLock` 返回该文档或 `undefined`。返回的 `release()` 删除该文件。`runLockPath(progressFile)` 是锁路径辅助。示例 `run-once` 在强制／白名单／轮询整段生命周期持有此锁。

@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
@@ -20,6 +20,7 @@ describe('validateSkillUpload', () => {
       false,
     )
     expect(validateSkillUpload({ filename: 'SKILL.html', bytes: Buffer.from('<p>') }).ok).toBe(false)
+    expect(validateSkillUpload({ filename: 'SKILL.md', bytes: Buffer.from('PK') }).ok).toBe(false)
   })
 
   it('rejects personal force attempts', () => {
@@ -44,5 +45,38 @@ describe('writePersonalSkill', () => {
       markdown,
     })
     expect(readFileSync(join(personalRoot, 'operator-1', 'my-skill', 'SKILL.md'), 'utf8')).toBe(markdown)
+  })
+
+  it('rejects a traversing name', () => {
+    const personalRoot = mkdtempSync(join(tmpdir(), 'personal-upload-'))
+    expect(() =>
+      writePersonalSkill({
+        personalRoot,
+        operatorId: 'operator-1',
+        name: '..',
+        markdown: 'x',
+      }),
+    ).toThrow()
+    expect(existsSync(join(personalRoot, 'SKILL.md'))).toBe(false)
+  })
+
+  it('rejects a traversing operatorId', () => {
+    const personalRoot = mkdtempSync(join(tmpdir(), 'personal-upload-'))
+    expect(() =>
+      writePersonalSkill({
+        personalRoot,
+        operatorId: '..',
+        name: 'my-skill',
+        markdown: 'x',
+      }),
+    ).toThrow()
+    expect(() =>
+      writePersonalSkill({
+        personalRoot,
+        operatorId: '..\\..\\windows',
+        name: 'my-skill',
+        markdown: 'x',
+      }),
+    ).toThrow()
   })
 })

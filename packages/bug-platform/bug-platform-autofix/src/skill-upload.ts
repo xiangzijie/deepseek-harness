@@ -6,7 +6,7 @@
  */
 
 import { mkdirSync, writeFileSync } from 'node:fs'
-import { basename, join } from 'node:path'
+import { basename, join, resolve, sep } from 'node:path'
 import { parse } from 'yaml'
 
 /** Copied from {@link ./skill-manifest.ts}; this module stays free of dsh-skill. */
@@ -45,9 +45,9 @@ export type SkillUploadResult = SkillUploadOk | SkillUploadErr
 export interface WritePersonalSkillInput {
   /** Root directory that contains per-operator subfolders. */
   personalRoot: string
-  /** Operator id segment under `personalRoot`. */
+  /** Operator id segment under `personalRoot`; kebab-case, same pattern as skill `name`. */
   operatorId: string
-  /** kebab-case skill name; must match validated frontmatter. */
+  /** kebab-case skill name; checked here, not only by {@link validateSkillUpload}. */
   name: string
   /** Full SKILL.md text to write. */
   markdown: string
@@ -102,13 +102,35 @@ export function validateSkillUpload(input: ValidateSkillUploadInput): SkillUploa
 }
 
 /**
- * Write a validated personal skill to `personalRoot/operatorId/<name>/SKILL.md`.
+ * Write a personal skill to `personalRoot/operatorId/<name>/SKILL.md`.
+ * `operatorId` and `name` must be kebab-case; the resolved destination must stay
+ * under the resolved `personalRoot`. This function does not assume
+ * {@link validateSkillUpload} already ran.
  * @param input - root paths, skill name, and Markdown body.
+ * @throws {Error} when `operatorId` or `name` is not kebab-case, or the
+ *   resolved destination is not under `personalRoot`.
  */
 export function writePersonalSkill(input: WritePersonalSkillInput): void {
-  const dir = join(input.personalRoot, input.operatorId, input.name)
-  mkdirSync(dir, { recursive: true })
-  writeFileSync(join(dir, 'SKILL.md'), input.markdown, 'utf8')
+  assertKebabCaseSegment(input.operatorId, 'operatorId')
+  assertKebabCaseSegment(input.name, 'name')
+  const root = resolve(input.personalRoot)
+  const dest = resolve(root, input.operatorId, input.name)
+  if (!dest.startsWith(root + sep)) {
+    throw new Error('写入路径必须位于个人 skill 根目录内')
+  }
+  mkdirSync(dest, { recursive: true })
+  writeFileSync(join(dest, 'SKILL.md'), input.markdown, 'utf8')
+}
+
+/**
+ * Reject a path segment unless it matches kebab-case `SKILL_NAME`.
+ * @param value - `operatorId` or skill `name`.
+ * @param field - error-message subject.
+ */
+function assertKebabCaseSegment(value: string, field: 'operatorId' | 'name'): void {
+  if (!SKILL_NAME.test(value)) {
+    throw new Error(`${field} 必须是 kebab-case`)
+  }
 }
 
 /**

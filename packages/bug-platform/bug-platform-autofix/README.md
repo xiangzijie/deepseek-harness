@@ -8,6 +8,10 @@ Library-first helpers for internal bug-platform autofix: load `menu-mapping.json
 
 `loadOperatorConfig(configPath)` reads and validates the console/CLI `operator.yaml` at the path you pass (relative or absolute). Missing files and invalid shapes fail loud with an `Error` (for example `operator.yaml 不存在: …` or `operator-config: …` validation messages). Each workspace requires its own `gitlabProjectId`; GitLab MR create/reuse uses that id. Omitted optional fields receive defaults: `gitlab.tokenEnv` → `GITLAB_TOKEN`, `workspaces[].autofix` → `true`, `skills.forceMaxCount` → `3`, `skills.forceMaxChars` → `8000`, `run.maxTickets` → `1`, `run.operatorId` → `local`, `run.lintEnabled` / `run.buildEnabled` → `false`. The returned object includes `workspaceByMappingRepo` and `workspaceById`. See [examples/bug-platform-autofix/operator.example.yaml](../../../examples/bug-platform-autofix/operator.example.yaml) for a full sample.
 
+## Personal skill upload
+
+`validateSkillUpload` accepts UTF-8 Markdown with kebab-case `name` and a non-empty `description`; it rejects `scripts/` paths, non-`.md` names, NUL bytes, ZIP magic (`PK` at byte 0), and personal `force: true`. `writePersonalSkill` writes `personalRoot/operatorId/<name>/SKILL.md` only when `operatorId` and `name` are kebab-case and the resolved directory stays under `personalRoot`; otherwise it throws. Callers must not skip that check by assuming `validateSkillUpload` already ran.
+
 ## Run lock
 
 `acquireRunLock(lockPath, info)` writes `{ pid, startedAt, configPath }` to `dirname(progressFile)/run.lock`. A second live pid throws `已有跑批（pid=<n>），progressFile=<path>`. `process.kill(pid, 0)` reporting `ESRCH` is stale and is replaced; `EPERM` is live and is not stolen. `readRunLock` returns that document or `undefined`. The returned `release()` deletes the file. `runLockPath(progressFile)` is the lock path helper. The example `run-once` holds this lock for the whole force / whitelist / poll process.
