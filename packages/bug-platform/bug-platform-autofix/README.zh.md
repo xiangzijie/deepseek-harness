@@ -6,7 +6,7 @@
 
 ## 值班配置（`operator.yaml`）
 
-`loadOperatorConfig(configPath)` 读取并校验传入路径上的控制台／CLI `operator.yaml`（相对或绝对路径均可）。文件缺失或字段非法时立即抛出 `Error`（例如 `operator.yaml 不存在: …` 或 `operator-config: …` 校验信息）。可选字段省略时使用默认值：`gitlab.tokenEnv` → `GITLAB_TOKEN`，`workspaces[].autofix` → `true`，`skills.forceMaxCount` → `3`，`skills.forceMaxChars` → `8000`，`run.maxTickets` → `1`，`run.operatorId` → `local`，`run.lintEnabled`／`run.buildEnabled` → `false`。返回值提供 `workspaceByMappingRepo` 与 `workspaceById`。完整样例见 [examples/bug-platform-autofix/operator.example.yaml](../../../examples/bug-platform-autofix/operator.example.yaml)。
+`loadOperatorConfig(configPath)` 读取并校验传入路径上的控制台／CLI `operator.yaml`（相对或绝对路径均可）。文件缺失或字段非法时立即抛出 `Error`（例如 `operator.yaml 不存在: …` 或 `operator-config: …` 校验信息）。每个工作区必须有自己的 `gitlabProjectId`；GitLab MR 创建／复用使用该 id。可选字段省略时使用默认值：`gitlab.tokenEnv` → `GITLAB_TOKEN`，`workspaces[].autofix` → `true`，`skills.forceMaxCount` → `3`，`skills.forceMaxChars` → `8000`，`run.maxTickets` → `1`，`run.operatorId` → `local`，`run.lintEnabled`／`run.buildEnabled` → `false`。返回值提供 `workspaceByMappingRepo` 与 `workspaceById`。完整样例见 [examples/bug-platform-autofix/operator.example.yaml](../../../examples/bug-platform-autofix/operator.example.yaml)。
 
 ## 跑批锁
 
@@ -30,7 +30,7 @@
 
 ## Git 工作区
 
-辅助函数只接受单个 `localRoot`，不会跨工作区切换产品 jinan。`assertProductBranch(localRoot, expectedJinan)` 允许该 jinan 或 `bugfix/<digits>`；若 HEAD 是另一条 `*-jinan` 则硬失败。`assertClean` 要求 porcelain 状态为空。`createBugfixBranch(localRoot, ticketId, expectedJinan)`：已在 `bugfix/<id>` 则复用；分支已存在则 checkout；否则先 checkout 到 `expectedJinan` 再 `checkout -b`，避免叠在上一单 `bugfix/*` 上。`commitAll` 执行 `add -A` + `commit` 并返回 `rev-parse HEAD`。`pushBranch` 执行 `push -u origin <branch>`。`listChangedFiles` 解析 porcelain 路径。测试可传入 `runGit(cwd, args)`；省略则使用 `defaultRunGit`。
+辅助函数只接受单个 `localRoot`，不会跨工作区切换产品 jinan。`assertProductBranch(localRoot, expectedJinan)` 允许该 jinan 或 `bugfix/<digits>`；若 HEAD 是另一条 `*-jinan` 则硬失败。`assertClean` 要求 porcelain 状态为空。`createBugfixBranch(localRoot, ticketId, expectedJinan)`：已在 `bugfix/<id>` 则复用；分支已存在则 checkout；否则先 checkout 到 `expectedJinan` 再 `checkout -b`，避免叠在上一单 `bugfix/*` 上。`commitAll` 执行 `add -A` + `commit` 并返回 `rev-parse HEAD`。`pushBranch` 执行 `push -u origin <branch>`。`listChangedFiles` 解析 porcelain 路径。测试可传入 `runGit(cwd, args)`；省略则使用 `defaultRunGit`。`inspectWorkspace({ localRoot, productBranch, gitlabHost, gitlabProjectId, runGit })` 仅根据本地 git 返回 `{ ok, reasons }`（目录、`.git`、HEAD、干净 porcelain、origin hostname 与 `gitlab.host`），不调用 GitLab HTTP。`run-once` 在开跑前对每个 `autofix: true` 工作区执行该检查。
 
 ## 可选 GitLab MR
 
@@ -38,7 +38,7 @@
 
 ## 编排
 
-`runOneTicket(config, ticketIdOrDetail)` 实现领单 → 修复 → Git 状态机。可传入已加载的 `BugTicketDetail` 强制领单（如 `--ticket 428`），绕过列表状态白名单。映射决议在任何 `处理中` followup 之前完成；无映射／home 可选 followup 且 `status_change` 为空／null，不领单。领单：`status_change=处理中`，`assignee_change=null`。领单后再下附件（跳过 `file_size === 0`）。创建 `bugfix/*`／调 agent 前，若描述过短且无截图，`assessPreAgentContext` 以 `insufficient_context` 停止（平台跟进含类别与原因；状态保持 `处理中`；`phase=failed`）。Agent brief 含停止规则；摘要含 `SKIP_AUTOFIX|<类别>|<原因>`（`insufficient_context`／`not_frontend`／`out_of_scope`）走同一停止路径。`lintEnabled`／`buildEnabled` 默认 `false`。MR 成功 → followup 保持 `处理中`（含 MR 链接与摘要），`phase=done`；本地已 commit 但 push／MR 失败 → 保持 `处理中`，`phase=awaiting_push`；修复失败／无 diff → 保持 `处理中`，`phase=failed`。自动修复**从不**标 `现场验证`。错误产品 jinan 硬失败且禁止自动 checkout。`runBatch(config, { maxTickets: 1 })` 先 `ensureToken`，再拉候选并调用 `runOneTicket` 至多 `maxTickets` 次。测试可注入 `agentRunner`、`runGit`、`ensureMr`、`addMrNote`；`buildAgentBrief`／`createDefaultAgentRunner` 负责 brief 与默认从 harness `apps/cli` 拉起 headless（需 `harnessRoot`，cwd 为产品仓）。
+`runOneTicket(config, ticketIdOrDetail)` 实现领单 → 修复 → Git 状态机。可传入已加载的 `BugTicketDetail` 强制领单（如 `--ticket 428`），绕过列表状态白名单。映射决议在任何 `处理中` followup 之前完成；无映射／home／`autofix: false` 可选 followup 且 `status_change` 为空／null，不领单。领单：`status_change=处理中`，`assignee_change=null`。领单后再下附件（跳过 `file_size === 0`）。创建 `bugfix/*`／调 agent 前，若描述过短且无截图，`assessPreAgentContext` 以 `insufficient_context` 停止（平台跟进含类别与原因；状态保持 `处理中`；`phase=failed`）。Agent brief 含停止规则；摘要含 `SKIP_AUTOFIX|<类别>|<原因>`（`insufficient_context`／`not_frontend`／`out_of_scope`）走同一停止路径。`lintEnabled`／`buildEnabled` 默认 `false`。MR 成功 → followup 保持 `处理中`（含 MR 链接与摘要），`phase=done`；本地已 commit 但 push／MR 失败 → 保持 `处理中`，`phase=awaiting_push`；修复失败／无 diff → 保持 `处理中`，`phase=failed`。自动修复**从不**标 `现场验证`。错误产品 jinan 硬失败且禁止自动 checkout。`runBatch(config, { maxTickets: 1 })` 先 `ensureToken`，再拉候选并调用 `runOneTicket` 至多 `maxTickets` 次。测试可注入 `agentRunner`、`runGit`、`ensureMr`、`addMrNote`；`buildAgentBrief`／`createDefaultAgentRunner` 负责 brief 与默认从 harness `apps/cli` 拉起 headless（需 `harnessRoot`，cwd 为产品仓）。
 
 ## 模型体验
 

@@ -6,30 +6,32 @@ English | [中文](2026-09-09-bug-platform-autofix.zh.md)
 
 ## Problem
 
-An internal bug platform holds unassigned frontend tickets that can be fixed in local product worktrees of `jgts/bigdata-web-frontend`. Operators need a manual batch path: claim a ticket, map its menu to the correct worktree, run a headless agent, attempt Git push and GitLab MR, and write followups back. deepseek-harness must host that path without changing `agent-loop`, without inventing a full capability seam before the pilot lands, and without checking out the wrong product jinan into another worktree of the same remote.
+An internal bug platform holds unassigned frontend tickets that can be fixed in local product worktrees of `jgts/bigdata-web-frontend`. Operators need a manual batch path: claim a ticket, map its menu to the correct worktree, run a headless agent, attempt Git push and GitLab MR, and write followups back. deepseek-harness must host that path without changing `agent-loop`, without inventing a full capability seam before the pilot lands, and without checking out the wrong product jinan into another worktree.
 
 ## Decision
 
 Ship a **hybrid two-package, library-first** layout under `packages/bug-platform/`:
 
 - `@deepseek-ai/dsh-bug-platform-http` owns login, list/get, followup, and authenticated download. Callers construct `BugPlatformClient` from resolved credentials; Cordis `apply` validates Config only and does not register `ctx.bugPlatform`.
-- `@deepseek-ai/dsh-bug-platform-autofix` owns menu mapping, ticket selection, local idempotency state, per-worktree Git helpers, GitLab ensure-MR plus notes, and `runOneTicket` / `runBatch` orchestration. Cordis `apply` stays a Config stub; `examples/bug-platform-autofix/run-once` imports helpers directly.
+- `@deepseek-ai/dsh-bug-platform-autofix` owns menu mapping, ticket selection, local idempotency state, per-worktree Git helpers, `inspectWorkspace` health checks, GitLab ensure-MR plus notes, and `runOneTicket` / `runBatch` orchestration. Cordis `apply` stays a Config stub; `examples/bug-platform-autofix/run-once` imports helpers directly.
 
-A full Service Definition / Provider / Consumer seam and installable bundle remain deferred. Phase-1 merge policy is **auto-fix + human merge**; high-confidence auto-merge is a later exception that must audit its judgment (design §3.11). Experience capture stays phase 3 (design §9.2).
+A full Service Definition / Provider / Consumer seam and installable bundle remain deferred. Phase-1 merge policy is **auto-fix + human merge**; high-confidence auto-merge remains deferred and must record its judgment basis. Experience capture remains deferred.
 
 ### Worktrees and mapping
 
-The three local roots (`dkh-custom`, `dkh-ailpha`, `dkh-home`) share one GitLab project and bind one product jinan each. Mapping resolves a single `localRoot`; all edit / lint / commit / push / MR work stays in that directory. Helpers never cross-checkout another product `*-jinan` into the wrong root; wrong HEAD hard-fails instead of auto-correcting. `createBugfixBranch` checks out the bound jinan before `checkout -b` so new ticket branches do not stack on a prior `bugfix/*` tip.
+Each local root (`dkh-custom`, `dkh-ailpha`, `dkh-home`) binds one product jinan and its own `gitlabProjectId`. Mapping resolves a single `localRoot`; all edit / lint / commit / push / MR work stays in that directory. `ensureMergeRequest` uses that workspace's `gitlabProjectId`. Helpers never cross-checkout another product `*-jinan` into the wrong root; wrong HEAD hard-fails instead of auto-correcting. `createBugfixBranch` checks out the bound jinan before `checkout -b` so new ticket branches do not stack on a prior `bugfix/*` tip. A workspace with `autofix: false` skips after mapping with a followup (`status_change` null) and no `处理中` claim.
 
-`menu-mapping.json` (`systems.*.items[]`) is the mapping authority. `resolveMenu` exact-matches `target_menu`, keeps only `custom` / `ailpha`, prefers `file_exists`, then **custom over ailpha**, and returns null for unknown, null repo, or **home**. Filing must select leaf menus; description text is not used for menu resolution (design §4.3). Default list statuses are `待确认` / `验证未通过` / `转派` / `转需求`; `网络安全数据大屏` and `网络安全指挥大屏` are hard-excluded.
+`menu-mapping.json` (`systems.*.items[]`) is the mapping authority. `resolveMenu` exact-matches `target_menu`, keeps only `custom` / `ailpha`, prefers `file_exists`, then **custom over ailpha**, and returns null for unknown, null repo, or **home**. Filing must select leaf menus; description text is not used for menu resolution. Default list statuses are `待确认` / `验证未通过` / `转派` / `转需求`; `网络安全数据大屏` and `网络安全指挥大屏` are hard-excluded.
 
 ### Gates, GitLab, and re-fix
 
 `lintEnabled` and `buildEnabled` default **off**. `GITLAB_TOKEN` is optional. Missing token or push/ensure-MR failure keeps platform status `处理中`, records `phase=awaiting_push`. Successful push keeps platform status **`处理中`** (followup includes MR URL) and must **not** claim `现场验证`; human review merges the MR.
 
+`run-once` runs `inspectWorkspace` on every `autofix: true` workspace after constructing orchestrator config and before any ticket run. The check verifies the directory exists, `.git` exists, HEAD is the bound jinan or `bugfix/<digits>`, porcelain is clean, and origin hostname matches `gitlab.host`. It does not call the GitLab HTTP API to look up project path. Any failure sets process exit code 1 and prints `id: 原因` on stderr.
+
 After each successful push, orchestration **ensures** the MR (create, or reuse on conflict), adds an MR note, and writes a platform followup (`处理中` with MR / commit / summary; never `现场验证`). A second pass on the same `bugfix/<id>` therefore still updates bug-platform处理记录 and MR discussion instead of failing solely because the MR already exists. Force `--ticket` / `--tickets` may retry `done` / `awaiting_push` / `failed`; only local `claimed` / `fixing` block.
 
-Default agent runner spawns harness `apps/cli` via tsx with product worktree as `cwd` (`harnessRoot` required)—never `pnpm dsh` inside the product tree. The example supports `--poll-interval <seconds>` for a serial daemon loop (phase-2 item 1, partial); Windows Task Scheduler can also fire one-shot `--max 1` runs. Ops entry `reset-to-pending.ts` batch-resets tickets to `待确认` (explicit `--tickets`, or local `phase=failed`) with a follow-up note and clears matching local state—no agent. Batch progress prints the queue and `[i/n]` lines and writes `progress.json` (optional display `pid`). `run-once` acquires `dirname(progressFile)/run.lock` for the whole force / whitelist / poll process: a live holder pid fails with `已有跑批（pid=<n>），progressFile=<path>`; `ESRCH` is stale and is replaced; `EPERM` is live and is not stolen.
+Default agent runner spawns harness `apps/cli` via tsx with product worktree as `cwd` (`harnessRoot` required)—never `pnpm dsh` inside the product tree. The example supports `--poll-interval <seconds>` for a serial daemon loop; Windows Task Scheduler can also fire one-shot `--max 1` runs. Ops entry `reset-to-pending.ts` batch-resets tickets to `待确认` (explicit `--tickets`, or local `phase=failed`) with a follow-up note and clears matching local state—no agent. Batch progress prints the queue and `[i/n]` lines and writes `progress.json` (optional display `pid`). `run-once` acquires `dirname(progressFile)/run.lock` for the whole force / whitelist / poll process: a live holder pid fails with `已有跑批（pid=<n>），progressFile=<path>`; `ESRCH` is stale and is replaced; `EPERM` is live and is not stolen.
 
 ### Stop when context is thin or not clearly frontend
 
@@ -45,7 +47,9 @@ When autofix later runs inside a session-backed agent, the agent brief is model-
 
 **Single package for HTTP and orchestration.** Rejected because the HTTP client is reusable without mapping/Git, and splitting keeps the library-first HTTP surface independent of autofix state machines.
 
-**Checkout any jinan inside one worktree.** Rejected because the three roots share one remote; checking out another product jinan contaminates the wrong local tree. One ticket maps to one root and one bound jinan only.
+**Checkout any jinan inside one worktree.** Rejected because each root binds one product jinan; checking out another product jinan contaminates the wrong local tree. One ticket maps to one root and one bound jinan only.
+
+**One hardcoded GitLab project id for all three worktrees.** Rejected because each workspace may target a different GitLab project on the same `gitlab.host`; MR create/reuse uses `workspaces[].gitlabProjectId`.
 
 **Hand-maintained short menu YAML beside `menu-mapping.json`.** Rejected because the exported JSON already carries `repo`, routes, and `file_exists`; a second table would drift.
 
@@ -53,7 +57,7 @@ When autofix later runs inside a session-backed agent, the agent brief is model-
 
 **Auto-reassign backend handlers on “looks like API” failures.** Rejected for phase 1; keep `处理中` with a reason and leave assignee unchanged.
 
-**Default auto-merge of MRs.** Rejected; human merge is the default. Optional high-confidence auto-merge later must record judgment basis (design §3.11).
+**Default auto-merge of MRs.** Rejected; human merge is the default. Optional high-confidence auto-merge later must record judgment basis.
 
 ## Consequences
 
