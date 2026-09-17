@@ -27,7 +27,7 @@ Status: implemented
 
 Headless 看到三层，个人 > 仓内 > 全局：`join(personalRoot, operatorId)` 经 rank=50 的 `autofix-personal` 提供方，`<localRoot>/.agents/skills` 与 `<localRoot>/.dsh/skills`（skill-filesystem rank 100/200），以及 `globalLocal/skills` 经 `customSkillDirs`（rank 300）。同名 catalog／工具发现按该顺序。即使更高层覆盖了 catalog 名，强制全局正文仍注入 brief。
 
-全局 clone 是 GitLab `jgts/autofix-skills`，独立于产品仓。值班机 clone 到 `skills.globalLocal`。保护 `main`；`force: true` 的变更经该 skill 仓的 MR 合入。创建远程时拷贝 [`examples/bug-platform-autofix/skill-repo-template/`](../../../examples/bug-platform-autofix/skill-repo-template/README.md)。
+全局 clone 是 GitLab `jgts/autofix-skills`，独立于产品仓。值班机 clone 到 `skills.globalLocal`。保护 `main`；`force: true` 的变更经该 skill 仓的 MR 合入。创建远程时拷贝 [`examples/bug-platform-autofix/skill-repo-template/`](../../../../examples/bug-platform-autofix/skill-repo-template/README.md)。
 
 ### 工作区与映射
 

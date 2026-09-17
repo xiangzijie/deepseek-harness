@@ -27,7 +27,7 @@ The operator console is a separate git repository: it is not a harness package a
 
 Headless sees three layers, personal > in-repo > global: `join(personalRoot, operatorId)` via the rank-50 `autofix-personal` provider, `<localRoot>/.agents/skills` and `<localRoot>/.dsh/skills` (skill-filesystem ranks 100/200), and `globalLocal/skills` via `customSkillDirs` (rank 300). Same-name catalog/tool discovery follows that order. Forced global bodies still inject into the brief even when a higher layer overrides the catalog name.
 
-The global clone is GitLab `jgts/autofix-skills`, independent of product repos. Duty machines clone it to `skills.globalLocal`. Protect `main`; `force: true` changes land through that skill repo's MR. Copy [`examples/bug-platform-autofix/skill-repo-template/`](../../../examples/bug-platform-autofix/skill-repo-template/README.md) to create the remote.
+The global clone is GitLab `jgts/autofix-skills`, independent of product repos. Duty machines clone it to `skills.globalLocal`. Protect `main`; `force: true` changes land through that skill repo's MR. Copy [`examples/bug-platform-autofix/skill-repo-template/`](../../../../examples/bug-platform-autofix/skill-repo-template/README.md) to create the remote.
 
 ### Worktrees and mapping
 
