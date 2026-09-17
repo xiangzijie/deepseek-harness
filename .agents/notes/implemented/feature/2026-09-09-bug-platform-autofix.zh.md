@@ -13,7 +13,7 @@ Status: implemented
 在 `packages/bug-platform/` 下交付**混合双包、库优先**布局：
 
 - `@deepseek-ai/dsh-bug-platform-http` 负责登录、列表／详情、followup 与鉴权下载。调用方用已解析凭据构造 `BugPlatformClient`；Cordis `apply` 只校验 Config，不注册 `ctx.bugPlatform`。
-- `@deepseek-ai/dsh-bug-platform-autofix` 负责菜单映射、选单、本地幂等状态、按工作区隔离的 Git 辅助、`inspectWorkspace`／`inspectAutofixWorkspaces` 健康检查、GitLab ensure MR 与 note，以及 `runOneTicket`／`runBatch` 编排。Cordis `apply` 仍为 Config 桩；`examples/bug-platform-autofix/run-once` 直接导入辅助函数。
+- `@deepseek-ai/dsh-bug-platform-autofix` 负责菜单映射、选单、本地幂等状态、按工作区隔离的 Git 辅助、`inspectWorkspace`／`inspectAutofixWorkspaces` 健康检查、GitLab ensure MR 与 note、`runOneTicket`／`runBatch` 编排，以及把强制全局 skill 写入 agent brief。Cordis `apply` 仍为 Config 桩；`examples/bug-platform-autofix/run-once` 直接导入辅助函数。
 
 完整的 Service Definition／Provider／Consumer seam 与可安装 bundle 仍推迟。一期合入策略为**自动修 + 人工合**；高确信度自动合仍推迟且须记录判定依据。经验沉淀仍推迟。
 
@@ -36,6 +36,10 @@ Status: implemented
 ### 上下文不足／非前端时停止
 
 映射决议后，编排先下载附件并运行 `assessPreAgentContext`，**再**领单。上下文过薄时写平台跟进（`status_change` 空），本地 `phase=skipped`，不改为 `处理中`。有截图时，DeepSeek 视觉预跑（默认 `deepseek-flash`）把观察写入 agent brief；视觉失败只记录，不阻断领单。Agent 在领单后若无法定位前端改动或无法确认是前端问题，须发出 `SKIP_AUTOFIX|<类别>|<原因>`；编排写平台跟进（类别＋原因），状态保持 `处理中`，`phase=failed`，不开 MR。brief 另含判断准则：独立判断、勿迎合叙述；区分事实／预测／观点；按本仓代码 → 截图观察 → 截图路径 → 具体跟进 → 笼统描述取证。矛盾诉求、过大改动、环境配置、已修复、安全敏感等仍用现有三类停止，不新增类别。
+
+### 强制全局 skill
+
+`runOneTicket` 在 `assessPreAgentContext` 之后、领单之前，从 `globalLocal/manifest.yaml` 解析 `force: true` 项。命中的 skill（`enabled: true`；`workspaceIds: []` 表示所有 `autofix: true` 的工作区 id）把 `skills/<name>/SKILL.md` 或 `skills/<name>.md` 正文写入 agent brief 的 `## 强制 skill（编排注入，必须遵守）`，名称列在第 2 行。模型必须遵守且不必调用 skill 工具。数量超过 `forceMaxCount`、正文合计超过 `forceMaxChars`、或强制项带 `disable-model-invocation: true` 时跳过且不写 `处理中`（`phase=skipped`）。`run-once` 把 `operator.yaml` 的 `skills.globalLocal` 与上述上限传入编排。
 
 ### 模型可见 brief 与 session 日志
 

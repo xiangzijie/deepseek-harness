@@ -7,6 +7,14 @@ import type { BugTicketDetail } from '@deepseek-ai/dsh-bug-platform-http'
 import { autofixStopBriefRules } from './autofix-stop.ts'
 import type { ResolvedMenu } from './menu-mapping.ts'
 
+/** One orchestrator-injected forced skill (name + Markdown body). */
+export interface AgentBriefForcedSkill {
+  /** kebab-case skill name. */
+  name: string
+  /** Markdown body after YAML frontmatter. */
+  body: string
+}
+
 /** Inputs for {@link buildAgentBrief}. */
 export interface AgentBriefInput {
   /** Ticket detail from the platform (or force-loaded for `--ticket`). */
@@ -23,16 +31,30 @@ export interface AgentBriefInput {
   visionObservation?: string
   /** Remote urls skipped (`file_size === 0`) or failed to download. */
   missingAssets?: readonly string[]
+  /**
+   * Forced global skills already resolved for this workspace. When non-empty,
+   * names are listed on line 2 and bodies appear under
+   * `## 强制 skill（编排注入，必须遵守）`.
+   */
+  forcedSkills?: readonly AgentBriefForcedSkill[]
 }
 
 /**
  * Assemble the model-facing brief for `pnpm dsh --profile headless`.
- * @param input - ticket detail, resolved menu, worktree paths, and assets.
+ * @param input - ticket detail, resolved menu, worktree paths, assets, and optional forced skills.
  * @returns a single prompt string.
  */
 export function buildAgentBrief(input: AgentBriefInput): string {
-  const { detail, resolved, localRoot, routesFile, screenshotPaths, missingAssets, visionObservation } =
-    input
+  const {
+    detail,
+    resolved,
+    localRoot,
+    routesFile,
+    screenshotPaths,
+    missingAssets,
+    visionObservation,
+    forcedSkills,
+  } = input
   const followups = [...detail.followups].sort((a, b) =>
     a.created_at.localeCompare(b.created_at),
   )
@@ -46,8 +68,10 @@ export function buildAgentBrief(input: AgentBriefInput): string {
         return `- ${f.created_at}${author}${status}${latest}: ${f.content}`
       })
 
+  const forced = forcedSkills ?? []
   const lines = [
     `修复 bug 平台工单 #${detail.id}（project_id=${detail.project_id}）。`,
+    ...(forced.length > 0 ? [`强制 skill 名称：${forced.map(s => s.name).join('、')}`] : []),
     `只在本工作区修改代码：${localRoot}`,
     `映射 repo=${resolved.repo} branch=${resolved.branch} menu_path=${resolved.menuPath}`,
     `target_menu=${detail.target_menu ?? '(null)'}`,
@@ -57,6 +81,7 @@ export function buildAgentBrief(input: AgentBriefInput): string {
     `需要时再读路由入口：${routesFile}`,
     '',
     autofixStopBriefRules(),
+    ...forcedSkillSection(forced),
     '',
     '## description',
     detail.description,
@@ -77,4 +102,18 @@ export function buildAgentBrief(input: AgentBriefInput): string {
   }
 
   return lines.join('\n')
+}
+
+/**
+ * Format the forced-skill heading and per-skill bodies, or nothing when empty.
+ * @param forced - resolved forced skills in manifest order.
+ * @returns lines to splice into the brief (leading blank line included).
+ */
+function forcedSkillSection(forced: readonly AgentBriefForcedSkill[]): string[] {
+  if (forced.length === 0) return []
+  const lines = ['', '## 强制 skill（编排注入，必须遵守）']
+  for (const skill of forced) {
+    lines.push(`### ${skill.name}`, skill.body)
+  }
+  return lines
 }

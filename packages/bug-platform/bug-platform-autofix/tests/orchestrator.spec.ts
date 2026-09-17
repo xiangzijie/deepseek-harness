@@ -747,6 +747,98 @@ describe('runOneTicket state machine', () => {
     expect(lintRunner).not.toHaveBeenCalled()
   })
 
+  it('injects forced skill bodies into the agent brief', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'skills-'))
+    mkdirSync(join(dir, 'skills/fix-frontend-ticket'), { recursive: true })
+    writeFileSync(
+      join(dir, 'manifest.yaml'),
+      `
+skills:
+  - name: fix-frontend-ticket
+    enabled: true
+    force: true
+    workspaceIds: []
+`,
+    )
+    writeFileSync(
+      join(dir, 'skills/fix-frontend-ticket/SKILL.md'),
+      '---\nname: fix-frontend-ticket\ndescription: x\n---\n# Body\nDo this.\n',
+    )
+    const ticket = detail({ id: 428, target_menu: '资产核查' })
+    const { client } = fakeClient({})
+    const agentRunner = vi.fn(async () => ({ ok: false, summary: 'stop-after-brief' }))
+
+    await runOneTicket(
+      baseConfig({
+        client,
+        agentRunner,
+        runGit: cleanCustomGit(),
+        skills: {
+          globalLocal: dir,
+          forceMaxCount: 3,
+          forceMaxChars: 8000,
+        },
+      }),
+      ticket,
+    )
+
+    const brief = agentRunner.mock.calls[0]?.[0]?.brief ?? ''
+    expect(brief).toContain('## 强制 skill（编排注入，必须遵守）')
+    expect(brief).toContain('### fix-frontend-ticket')
+    expect(brief).toContain('Do this.')
+    expect(brief).toContain('强制 skill 名称：fix-frontend-ticket')
+  })
+
+  it('skips without claiming when forced skills exceed forceMaxCount', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'skills-'))
+    mkdirSync(join(dir, 'skills/one'), { recursive: true })
+    mkdirSync(join(dir, 'skills/two'), { recursive: true })
+    writeFileSync(
+      join(dir, 'manifest.yaml'),
+      `
+skills:
+  - name: one
+    enabled: true
+    force: true
+    workspaceIds: []
+  - name: two
+    enabled: true
+    force: true
+    workspaceIds: []
+`,
+    )
+    writeFileSync(join(dir, 'skills/one/SKILL.md'), '---\nname: one\ndescription: x\n---\nA\n')
+    writeFileSync(join(dir, 'skills/two/SKILL.md'), '---\nname: two\ndescription: x\n---\nB\n')
+    const ticket = detail({ id: 911, target_menu: '资产核查' })
+    const { client, followups, order } = fakeClient({})
+    const agentRunner = vi.fn(async () => ({ ok: true, summary: 'should-not-run' }))
+    const store = new TicketStateStore()
+
+    const outcome = await runOneTicket(
+      baseConfig({
+        client,
+        agentRunner,
+        runGit: cleanCustomGit(),
+        stateStore: store,
+        skills: {
+          globalLocal: dir,
+          forceMaxCount: 1,
+          forceMaxChars: 8000,
+        },
+      }),
+      ticket,
+    )
+
+    expect(outcome.kind).toBe('skipped')
+    expect(String((outcome as { reason: string }).reason)).toMatch(/forceMaxCount/)
+    expect(agentRunner).not.toHaveBeenCalled()
+    expect(order.some(s => s.includes('处理中'))).toBe(false)
+    expect(followups.at(-1)?.body.status_change == null || followups.at(-1)?.body.status_change === '').toBe(
+      true,
+    )
+    expect(store.get(911)?.phase).toBe('skipped')
+  })
+
   it('accepts a preloaded detail for --ticket force path', async () => {
     const ticket = detail({ id: 428, target_menu: '资产核查', status: '转派' })
     const getTicket = vi.fn()

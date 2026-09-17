@@ -2,7 +2,9 @@
  * End-to-end orchestrator for one ticket / one batch (design §3).
  * Mapping is resolved before any `处理中` claim; home / unmapped /
  * {@link isExcludedTargetMenu} / `autofix: false` never claim. Context precheck
- * runs after mapping and asset download, still before claim.
+ * and forced-skill resolution run after mapping and asset download, still
+ * before claim, so `forceMaxCount` / `forceMaxChars` /
+ * `disable-model-invocation` failures skip without `处理中`.
  *
  * @module @deepseek-ai/dsh-bug-platform-autofix/orchestrator
  */
@@ -31,6 +33,10 @@ import {
   type RunGit,
   type WorkspaceRoots,
 } from './git-workspace.ts'
+import {
+  resolveForcedSkills,
+  type ForcedSkill,
+} from './skill-manifest.ts'
 import {
   addMergeRequestNote,
   ensureMergeRequest,
@@ -121,6 +127,19 @@ export interface OrchestratorConfig {
    * inject the observation into the agent brief. Omit to skip vision.
    */
   vision?: Omit<VisionPreflightOptions, 'ticketId'>
+  /**
+   * Global skill clone and force-injection limits. When omitted, the brief has
+   * no forced-skill section. Production `run-once` always passes this from
+   * `operator.yaml`.
+   */
+  skills?: {
+    /** Local clone root containing `manifest.yaml` and `skills/`. */
+    globalLocal: string
+    /** Maximum forced skills for one workspace. */
+    forceMaxCount: number
+    /** Maximum combined forced-skill body characters. */
+    forceMaxChars: number
+  }
   /** When true (default), write an optional skip followup for unmapped/home. */
   writeSkipFollowup?: boolean
   /** Platform project id for list/get; defaults to `47`. */
@@ -246,6 +265,29 @@ export async function runOneTicket(
     return skipBeforeClaim(config, detail.id, resolved, branchName, preStop)
   }
 
+  let forcedSkills: ForcedSkill[] = []
+  if (config.skills !== undefined) {
+    try {
+      forcedSkills = resolveForcedSkills({
+        globalLocal: config.skills.globalLocal,
+        workspaceId: workspace.id,
+        autofixWorkspaceIds: resolveWorkspaces(config)
+          .filter(ws => ws.autofix !== false)
+          .map(ws => ws.id),
+        forceMaxCount: config.skills.forceMaxCount,
+        forceMaxChars: config.skills.forceMaxChars,
+      })
+    } catch (error) {
+      return skipUnclaimed(
+        config,
+        detail.id,
+        resolved,
+        branchName,
+        `强制 skill 无法注入，未领单：${errorMessage(error)}`,
+      )
+    }
+  }
+
   let visionObservation: string | undefined
   if (config.vision !== undefined && screenshotPaths.length > 0) {
     const visionResult = await describeScreenshots(screenshotPaths, {
@@ -313,6 +355,7 @@ export async function runOneTicket(
     screenshotPaths,
     missingAssets,
     ...(visionObservation === undefined ? {} : { visionObservation }),
+    ...(forcedSkills.length === 0 ? {} : { forcedSkills }),
   })
 
   let agentResult: { ok: boolean; summary: string }

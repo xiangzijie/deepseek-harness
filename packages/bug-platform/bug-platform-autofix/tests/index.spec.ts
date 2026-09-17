@@ -23,6 +23,7 @@ describe('bug-platform-autofix plugin', () => {
     expect(typeof BugPlatformAutofix.createMergeRequest).toBe('function')
     expect(BugPlatformAutofix.GitlabTokenMissingError).toBeTypeOf('function')
     expect(typeof BugPlatformAutofix.buildAgentBrief).toBe('function')
+    expect(typeof BugPlatformAutofix.resolveForcedSkills).toBe('function')
     expect(typeof BugPlatformAutofix.createDefaultAgentRunner).toBe('function')
     expect(typeof BugPlatformAutofix.runOneTicket).toBe('function')
     expect(typeof BugPlatformAutofix.runBatch).toBe('function')

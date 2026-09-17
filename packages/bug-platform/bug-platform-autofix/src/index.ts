@@ -76,8 +76,11 @@ export {
   GitlabTokenMissingError,
 } from './gitlab-mr.ts'
 
-export type { AgentBriefInput } from './agent-brief.ts'
+export type { AgentBriefForcedSkill, AgentBriefInput } from './agent-brief.ts'
 export { buildAgentBrief } from './agent-brief.ts'
+
+export type { ForcedSkill, ResolveForcedSkillsOptions } from './skill-manifest.ts'
+export { resolveForcedSkills } from './skill-manifest.ts'
 
 export type { AutofixStop, AutofixStopCategory } from './autofix-stop.ts'
 export {

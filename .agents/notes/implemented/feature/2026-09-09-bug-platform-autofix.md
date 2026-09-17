@@ -13,7 +13,7 @@ An internal bug platform holds unassigned frontend tickets that can be fixed in 
 Ship a **hybrid two-package, library-first** layout under `packages/bug-platform/`:
 
 - `@deepseek-ai/dsh-bug-platform-http` owns login, list/get, followup, and authenticated download. Callers construct `BugPlatformClient` from resolved credentials; Cordis `apply` validates Config only and does not register `ctx.bugPlatform`.
-- `@deepseek-ai/dsh-bug-platform-autofix` owns menu mapping, ticket selection, local idempotency state, per-worktree Git helpers, `inspectWorkspace` / `inspectAutofixWorkspaces` health checks, GitLab ensure-MR plus notes, and `runOneTicket` / `runBatch` orchestration. Cordis `apply` stays a Config stub; `examples/bug-platform-autofix/run-once` imports helpers directly.
+- `@deepseek-ai/dsh-bug-platform-autofix` owns menu mapping, ticket selection, local idempotency state, per-worktree Git helpers, `inspectWorkspace` / `inspectAutofixWorkspaces` health checks, GitLab ensure-MR plus notes, `runOneTicket` / `runBatch` orchestration, and forced global skill injection into the agent brief. Cordis `apply` stays a Config stub; `examples/bug-platform-autofix/run-once` imports helpers directly.
 
 A full Service Definition / Provider / Consumer seam and installable bundle remain deferred. Phase-1 merge policy is **auto-fix + human merge**; high-confidence auto-merge remains deferred and must record its judgment basis. Experience capture remains deferred.
 
@@ -36,6 +36,10 @@ Default agent runner spawns harness `apps/cli` via tsx with product worktree as 
 ### Stop when context is thin or not clearly frontend
 
 After mapping resolves, orchestration downloads assets and runs `assessPreAgentContext` **before** claiming. Thin context stops with a platform followup (`status_change` null), local `phase=skipped`, and no `处理中`. When screenshots exist, a DeepSeek vision pre-pass (`deepseek-flash` by default) describes them into the agent brief; vision failure is recorded but does not block claim. When the agent cannot locate a frontend change or cannot confirm a frontend bug after claim, it must emit `SKIP_AUTOFIX|<category>|<reason>`; orchestration writes a platform followup (category + reason), keeps status `处理中`, sets `phase=failed`, and opens no MR. The brief also requires independent judgment (do not sycophantically follow the ticket narrative), separating facts from predictions and opinions, and an evidence priority: local code → vision observation → screenshots → concrete latest followups → vague description. Conflicting asks, oversized changes, env-only issues, already-fixed tickets, and security-sensitive work still map onto the same three stop categories—no new category tokens.
+
+### Forced global skills
+
+`runOneTicket` resolves `force: true` entries from `globalLocal/manifest.yaml` after `assessPreAgentContext` and before claim. Matching skills (`enabled: true`; `workspaceIds: []` means every `autofix: true` workspace id) have their `skills/<name>/SKILL.md` or `skills/<name>.md` bodies injected into the agent brief under `## 强制 skill（编排注入，必须遵守）`; names are listed on line 2. The model must obey them without calling a skill tool. Count above `forceMaxCount`, combined body characters above `forceMaxChars`, or `disable-model-invocation: true` on a forced skill skips without `处理中` (`phase=skipped`). `run-once` passes `skills.globalLocal` and those limits from `operator.yaml`.
 
 ### Model-visible brief vs session log
 

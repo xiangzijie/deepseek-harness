@@ -292,6 +292,11 @@ async function runWithLock(
     lintEnabled: cfg.run.lintEnabled,
     buildEnabled: cfg.run.buildEnabled,
     projectId: cfg.bugPlatform.projectId,
+    skills: {
+      globalLocal: cfg.skills.globalLocal,
+      forceMaxCount: cfg.skills.forceMaxCount,
+      forceMaxChars: cfg.skills.forceMaxChars,
+    },
     vision: {
       apiKey: deepseekApiKey,
       ...(deepseekBaseURL === undefined || deepseekBaseURL.length === 0
