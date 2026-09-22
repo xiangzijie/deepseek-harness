@@ -31,6 +31,8 @@ describe('bug-platform-autofix plugin', () => {
     expect(typeof BugPlatformAutofix.resolvePersonalSkillPluginPath).toBe('function')
     expect(typeof BugPlatformAutofix.runOneTicket).toBe('function')
     expect(typeof BugPlatformAutofix.runBatch).toBe('function')
+    expect(typeof BugPlatformAutofix.assessNeedFrontendFix).toBe('function')
+    expect(typeof BugPlatformAutofix.parseEligibilityModelText).toBe('function')
     expect(typeof BugPlatformAutofix.inspectWorkspace).toBe('function')
     expect(typeof BugPlatformAutofix.inspectAutofixWorkspaces).toBe('function')
   })

@@ -127,6 +127,20 @@ export type {
 export { runBatch, runOneTicket } from './orchestrator.ts'
 
 export type {
+  EligibilityParseErr,
+  EligibilityParseOk,
+  EligibilityPreflightOptions,
+  NeedFrontendFix,
+} from './eligibility-preflight.ts'
+export {
+  DEFAULT_ELIGIBILITY_MODEL,
+  ELIGIBILITY_SYSTEM_PROMPT,
+  assessNeedFrontendFix,
+  buildEligibilityUserPayload,
+  parseEligibilityModelText,
+} from './eligibility-preflight.ts'
+
+export type {
   VisionPreflightErr,
   VisionPreflightOk,
   VisionPreflightOptions,

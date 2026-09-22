@@ -49,11 +49,11 @@ Headless 看到三层，个人 > 仓内 > 全局：`join(personalRoot, operatorI
 
 ### 上下文不足／非前端时停止
 
-映射决议后，编排先下载附件并运行 `assessPreAgentContext`，**再**领单。上下文过薄时写平台跟进（`status_change` 空），本地 `phase=skipped`，不改为 `处理中`。有截图时，DeepSeek 视觉预跑（默认 `deepseek-flash`）把观察写入 agent brief；视觉失败只记录，不阻断领单。Agent 在领单后若无法定位前端改动或无法确认是前端问题，须发出 `SKIP_AUTOFIX|<类别>|<原因>`；编排写平台跟进（类别＋原因），状态保持 `处理中`，`phase=failed`，不开 MR。brief 另含判断准则：独立判断、勿迎合叙述；区分事实／预测／观点；按本仓代码 → 截图观察 → 截图路径 → 具体跟进 → 笼统描述取证。矛盾诉求、过大改动、环境配置、已修复、安全敏感等仍用现有三类停止，不新增类别。
+映射决议后，编排先下载附件并运行 `assessPreAgentContext`，**再**领单。上下文过薄时写平台跟进（`status_change` 空），本地 `phase=skipped`，不改为 `处理中`。该预检之后，文本资格预检（`assessNeedFrontendFix`）仅根据描述与跟进判断 `need_frontend_fix`（不读截图）；工单正文不可信。仅当模型明确返回 `false` 时跳过（`out_of_scope`，不写 `处理中`）；`true`／`uncertain`／HTTP 或解析失败则继续。强制单号（`--ticket`／`--tickets`）同样走该判断。`runBatch` 中跳过结果不占用 `maxTickets`，后续候选补位直到已领单结果达到上限。有截图时，DeepSeek 视觉预跑（默认 `deepseek-flash`）把观察写入 agent brief；视觉失败只记录，不阻断领单。Agent 在领单后若无法定位前端改动或无法确认是前端问题，须发出 `SKIP_AUTOFIX|<类别>|<原因>`；编排写平台跟进（类别＋原因），状态保持 `处理中`，`phase=failed`，不开 MR。brief 另含判断准则：独立判断、勿迎合叙述；区分事实／预测／观点；按本仓代码 → 截图观察 → 截图路径 → 具体跟进 → 笼统描述取证。矛盾诉求、过大改动、环境配置、已修复、安全敏感等仍用现有三类停止，不新增类别。
 
 ### 强制全局 skill
 
-`runOneTicket` 在 `assessPreAgentContext` 之后、领单之前，从 `globalLocal/manifest.yaml` 解析 `force: true` 项。命中的 skill（`enabled: true`；`workspaceIds: []` 表示所有 `autofix: true` 的工作区 id）把 `skills/<name>/SKILL.md` 或 `skills/<name>.md` 正文写入 agent brief 的 `## 强制 skill（编排注入，必须遵守）`，名称列在第 2 行。模型必须遵守且不必调用 skill 工具。`skills[].name` 必须匹配 `/^[a-z0-9]+(?:-[a-z0-9]+)*$/`（与 dsh `isSkillName` 相同，本包本地复制该正则，不依赖 `@deepseek-ai/dsh-skill`）；否则 Windows 上 `path.join(globalLocal, 'skills', name, …)` 可逃出 `skills/`（`../`、盘符绝对路径、`foo/bar`）。非法名称在加载 manifest 时抛错——不是返回空列表——编排因此 `skipUnclaimed` 且不写 `处理中`。数量超过 `forceMaxCount`、正文合计超过 `forceMaxChars`、或强制项带 `disable-model-invocation: true` 时同样跳过且不写 `处理中`（`phase=skipped`）。`run-once` 把 `operator.yaml` 的 `skills.globalLocal` 与上述上限传入编排。
+`runOneTicket` 在文本资格预检之后、领单之前，从 `globalLocal/manifest.yaml` 解析 `force: true` 项。命中的 skill（`enabled: true`；`workspaceIds: []` 表示所有 `autofix: true` 的工作区 id）把 `skills/<name>/SKILL.md` 或 `skills/<name>.md` 正文写入 agent brief 的 `## 强制 skill（编排注入，必须遵守）`，名称列在第 2 行。模型必须遵守且不必调用 skill 工具。`skills[].name` 必须匹配 `/^[a-z0-9]+(?:-[a-z0-9]+)*$/`（与 dsh `isSkillName` 相同，本包本地复制该正则，不依赖 `@deepseek-ai/dsh-skill`）；否则 Windows 上 `path.join(globalLocal, 'skills', name, …)` 可逃出 `skills/`（`../`、盘符绝对路径、`foo/bar`）。非法名称在加载 manifest 时抛错——不是返回空列表——编排因此 `skipUnclaimed` 且不写 `处理中`。数量超过 `forceMaxCount`、正文合计超过 `forceMaxChars`、或强制项带 `disable-model-invocation: true` 时同样跳过且不写 `处理中`（`phase=skipped`）。`run-once` 把 `operator.yaml` 的 `skills.globalLocal` 与上述上限传入编排。
 
 ### 模型可见 brief 与 session 日志
 

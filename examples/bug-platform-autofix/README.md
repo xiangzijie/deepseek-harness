@@ -38,8 +38,11 @@ Copy-Item .env.example .env
 | `BUG_PLATFORM_OPERATOR_FILE` | 否 | `operator.yaml` 路径；`--config` 优先于本变量 |
 | `BUG_PLATFORM_BASE_URL` | 否 | 覆盖 yaml `bugPlatform.baseUrl` |
 | `GITLAB_TOKEN` | 否 | GitLab `PRIVATE-TOKEN`（或 yaml `gitlab.tokenEnv` 所指变量）；无 Token 时仍可本地 commit，但不会开 MR |
+| `BUG_PLATFORM_ELIGIBILITY_MODEL` | 否 | 领单前「是否改前端」文本判断所用模型；默认 `deepseek-chat` |
 
 映射、状态、进度、附件路径只认 yaml 的 `mappingFile` / `stateFile` / `progressFile` / `assetsDir`，不提供同名 env 覆盖。
+
+领单前文本资格判断：同一 `DEEPSEEK_API_KEY`（可选 `DEEPSEEK_BASE_URL`、`BUG_PLATFORM_ELIGIBILITY_MODEL`）根据描述与跟进判断 `need_frontend_fix`；仅当模型返回 `false` 时跳过领单；`uncertain`、HTTP 失败或解析失败仍领单；强制单号同样走该判断；白名单下被跳过的单不占用 `maxTickets`，后续候选补位。
 
 视觉预跑（有截图时）：使用同一 `DEEPSEEK_API_KEY`；可选 `DEEPSEEK_BASE_URL`、`BUG_PLATFORM_VISION_MODEL`（默认 `deepseek-flash`）。观察结果写入 agent brief 的「截图观察（模型视觉）」节。
 
