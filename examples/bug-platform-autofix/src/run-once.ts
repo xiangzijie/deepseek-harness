@@ -444,7 +444,7 @@ async function runWithLock(
             if (continuous === true) {
               process.stdout.write(
                 processed === 0
-                  ? `本轮无候选，${DEFAULT_EMPTY_BATCH_BACKOFF_SECONDS}s 后重试…\n`
+                  ? `本轮无人领单，${DEFAULT_EMPTY_BATCH_BACKOFF_SECONDS}s 后重试…\n`
                   : `本批 ${processed} 单已处理完，立刻拉下一批…\n`,
               )
               return

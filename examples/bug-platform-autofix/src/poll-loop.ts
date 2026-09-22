@@ -6,15 +6,15 @@
 export interface PollLoopDeps {
   /**
    * One batch round (claim/fix/save belongs to the caller).
-   * @returns how many tickets were attempted in this round (0 = empty).
+   * @returns claimed (non-skipped) count for this round (0 = empty or all skipped).
    */
   runRound: () => Promise<number>
   /** Sleep between rounds; tests inject a no-op or fake clock. */
   sleep: (ms: number) => Promise<void>
   /**
    * Delay after a round. Return 0 to start the next round immediately
-   * (typical when the previous round processed tickets).
-   * @param processed - tickets attempted in the round that just finished.
+   * (typical when the previous round claimed tickets).
+   * @param processed - claimed count from the round that just finished.
    */
   delayMsAfterRound: (processed: number) => number
   /** Return false to stop after the current round finishes (SIGINT). */
