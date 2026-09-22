@@ -34,7 +34,7 @@ Copy-Item .env.example .env
 |------|------|------|
 | `BUG_PLATFORM_USERNAME` | 是 | Bug 平台登录用户名 |
 | `BUG_PLATFORM_PASSWORD` | 是 | Bug 平台登录密码 |
-| `DEEPSEEK_API_KEY` | 是 | headless agent 调模型（`reset-to-pending` 不需要） |
+| `DEEPSEEK_API_KEY` | 是 | headless agent 与领单前资格判断调模型（`reset-to-pending` 不需要） |
 | `BUG_PLATFORM_OPERATOR_FILE` | 否 | `operator.yaml` 路径；`--config` 优先于本变量 |
 | `BUG_PLATFORM_BASE_URL` | 否 | 覆盖 yaml `bugPlatform.baseUrl` |
 | `GITLAB_TOKEN` | 否 | GitLab `PRIVATE-TOKEN`（或 yaml `gitlab.tokenEnv` 所指变量）；无 Token 时仍可本地 commit，但不会开 MR |

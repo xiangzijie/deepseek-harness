@@ -49,7 +49,7 @@ Headless 看到三层，个人 > 仓内 > 全局：`join(personalRoot, operatorI
 
 ### 上下文不足／非前端时停止
 
-映射决议后，编排先下载附件并运行 `assessPreAgentContext`，**再**领单。上下文过薄时写平台跟进（`status_change` 空），本地 `phase=skipped`，不改为 `处理中`。该预检之后，文本资格预检（`assessNeedFrontendFix`）仅根据描述与跟进判断 `need_frontend_fix`（不读截图）；工单正文不可信。仅当模型明确返回 `false` 时跳过（`out_of_scope`，不写 `处理中`）；`true`／`uncertain`／HTTP 或解析失败则继续。强制单号（`--ticket`／`--tickets`）同样走该判断。`runBatch` 中跳过结果不占用 `maxTickets`，后续候选补位直到已领单结果达到上限。有截图时，DeepSeek 视觉预跑（默认 `deepseek-flash`）把观察写入 agent brief；视觉失败只记录，不阻断领单。Agent 在领单后若无法定位前端改动或无法确认是前端问题，须发出 `SKIP_AUTOFIX|<类别>|<原因>`；编排写平台跟进（类别＋原因），状态保持 `处理中`，`phase=failed`，不开 MR。brief 另含判断准则：独立判断、勿迎合叙述；区分事实／预测／观点；按本仓代码 → 截图观察 → 截图路径 → 具体跟进 → 笼统描述取证。矛盾诉求、过大改动、环境配置、已修复、安全敏感等仍用现有三类停止，不新增类别。
+映射决议后，编排先下载附件并运行 `assessPreAgentContext`，**再**领单。上下文过薄时写平台跟进（`status_change` 空），本地 `phase=skipped`，不改为 `处理中`。该预检之后，文本资格预检（`assessNeedFrontendFix`）仅根据描述与跟进判断 `need_frontend_fix`（不读截图）；工单正文不可信。仅当模型明确返回 `false` 时跳过（`out_of_scope`，不写 `处理中`）；`true`／`uncertain`／HTTP 或解析失败则继续。强制单号（`--ticket`／`--tickets`）同样走该判断。`runBatch` 中跳过结果不占用 `maxTickets`，后续候选补位直到已领单结果（含随后失败的领单）达到上限。有截图时，DeepSeek 视觉预跑（默认 `deepseek-flash`）把观察写入 agent brief；视觉失败只记录，不阻断领单。Agent 在领单后若无法定位前端改动或无法确认是前端问题，须发出 `SKIP_AUTOFIX|<类别>|<原因>`；编排写平台跟进（类别＋原因），状态保持 `处理中`，`phase=failed`，不开 MR。brief 另含判断准则：独立判断、勿迎合叙述；区分事实／预测／观点；按本仓代码 → 截图观察 → 截图路径 → 具体跟进 → 笼统描述取证。矛盾诉求、过大改动、环境配置、已修复、安全敏感等仍用现有三类停止，不新增类别。
 
 ### 强制全局 skill
 
