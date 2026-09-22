@@ -903,7 +903,7 @@ skills:
 })
 
 describe('runBatch', () => {
-  it('processes at most maxTickets candidates after ensureToken', async () => {
+  it('processes at most maxTickets non-skipped candidates after ensureToken', async () => {
     const rows = [
       detail({ id: 1, target_menu: '资产核查', status: '待确认' }),
       detail({ id: 2, target_menu: '资产核查', status: '待确认' }),
@@ -921,6 +921,47 @@ describe('runBatch', () => {
     expect(outcomes).toHaveLength(1)
     expect(order[0]).toBe('ensureToken')
     expect(order.filter(s => s.startsWith('getTicket:'))).toHaveLength(1)
+  })
+
+  it('does not count eligibility skip toward maxTickets and continues', async () => {
+    const rows = [
+      detail({
+        id: 1,
+        target_menu: '资产核查',
+        followups: [{ content: '已修复，待验证', created_at: '2026-09-01T00:00:00.000Z' }],
+      }),
+      detail({ id: 2, target_menu: '资产核查', description: '页面表格列错位显示异常' }),
+    ]
+    const { client, followups, order } = fakeClient({
+      listTickets: async () => rows,
+      getTicket: async (id) => {
+        const found = rows.find(r => r.id === id)
+        if (found === undefined) throw new Error(`missing ${id}`)
+        return found
+      },
+    })
+    const agentRunner: AgentRunner = async () => ({ ok: false, summary: 'batch-stop' })
+    const outcomes = await runBatch(
+      baseConfig({
+        client,
+        agentRunner,
+        runGit: cleanCustomGit(),
+        eligibility: {
+          apiKey: 'sk-test',
+          assess: async d =>
+            d.id === 1
+              ? { ok: true, needFrontendFix: false, reason: '已修复待验证' }
+              : { ok: true, needFrontendFix: true, reason: '仍有前端缺陷' },
+        },
+      }),
+      { maxTickets: 1 },
+    )
+    expect(outcomes).toHaveLength(2)
+    expect(outcomes[0]).toMatchObject({ kind: 'skipped' })
+    expect(outcomes[1]?.kind).toBe('failed')
+    expect(order.filter(s => s.startsWith('getTicket:'))).toHaveLength(2)
+    expect(followups.some(f => f.id === 2 && f.body.status_change === '处理中')).toBe(true)
+    expect(followups.some(f => f.id === 1 && f.body.status_change === '处理中')).toBe(false)
   })
 
   it('invokes onQueue / onTicketStart / onTicketEnd in order', async () => {
