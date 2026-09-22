@@ -1,10 +1,26 @@
 import type { BugTicketDetail } from '@deepseek-ai/dsh-bug-platform-http'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import {
+  assessNeedFrontendFix,
   buildEligibilityUserPayload,
+  DEFAULT_ELIGIBILITY_MODEL,
   ELIGIBILITY_SYSTEM_PROMPT,
   parseEligibilityModelText,
 } from '../src/eligibility-preflight.ts'
+
+/** Minimal ticket for HTTP eligibility tests. */
+function minimalDetail(): BugTicketDetail {
+  return {
+    id: 9,
+    project_id: 47,
+    status: '待确认',
+    target_menu: '资产核查',
+    description: '按钮点击无响应',
+    screenshots: [],
+    assignee_id: null,
+    followups: [],
+  }
+}
 
 describe('parseEligibilityModelText', () => {
   it('parses a bare JSON object', () => {
@@ -92,5 +108,39 @@ describe('eligibility prompt and user payload', () => {
     })
     expect(payload).toContain('最新跟进短句')
     expect(payload.includes('x'.repeat(8000))).toBe(false)
+  })
+})
+
+describe('assessNeedFrontendFix', () => {
+  it('returns proceed when apiKey is empty', async () => {
+    const result = await assessNeedFrontendFix(minimalDetail(), { apiKey: '' })
+    expect(result).toEqual({ ok: false, error: expect.stringMatching(/DEEPSEEK_API_KEY/) })
+  })
+
+  it('POSTs chat.completions and maps false to skip', async () => {
+    const fetchImpl = vi.fn(async (_url: string, init?: RequestInit) => {
+      const body = JSON.parse(String(init?.body)) as { model: string; messages: unknown[] }
+      expect(body.model).toBe(DEFAULT_ELIGIBILITY_MODEL)
+      expect(body.messages).toHaveLength(2)
+      return new Response(
+        JSON.stringify({
+          choices: [{ message: { content: '{"need_frontend_fix":false,"reason":"已修复待验证"}' } }],
+        }),
+        { status: 200 },
+      )
+    })
+    const result = await assessNeedFrontendFix(minimalDetail(), {
+      apiKey: 'sk-test',
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+    })
+    expect(result).toEqual({ ok: true, needFrontendFix: false, reason: '已修复待验证' })
+  })
+
+  it('returns ok false on HTTP 500', async () => {
+    const result = await assessNeedFrontendFix(minimalDetail(), {
+      apiKey: 'sk-test',
+      fetchImpl: (async () => new Response('nope', { status: 500 })) as unknown as typeof fetch,
+    })
+    expect(result.ok).toBe(false)
   })
 })

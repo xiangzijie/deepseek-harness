@@ -1,10 +1,28 @@
 /**
- * Parse the eligibility chat completion into a structured decision.
- * Strips at most one markdown fence, then JSON.parse.
+ * Eligibility preflight: prompt, user payload, chat.completions HTTP, and
+ * parse of the assistant JSON decision.
  * @module @deepseek-ai/dsh-bug-platform-autofix/eligibility-preflight
  */
 
 import type { BugFollowup, BugTicketDetail } from '@deepseek-ai/dsh-bug-platform-http'
+
+/** Default wire model id for eligibility chat. */
+export const DEFAULT_ELIGIBILITY_MODEL = 'deepseek-chat'
+
+/** Default public DeepSeek API root for eligibility. */
+export const DEFAULT_ELIGIBILITY_BASE_URL = 'https://api.deepseek.com'
+
+/** Options for {@link assessNeedFrontendFix}. */
+export interface EligibilityPreflightOptions {
+  /** DeepSeek API key (never log). */
+  apiKey: string
+  /** API root; defaults to {@link DEFAULT_ELIGIBILITY_BASE_URL}. */
+  baseURL?: string
+  /** Wire model id; defaults to {@link DEFAULT_ELIGIBILITY_MODEL}. */
+  model?: string
+  /** Injectable fetch (tests). */
+  fetchImpl?: typeof fetch
+}
 
 export type NeedFrontendFix = true | false | 'uncertain'
 
@@ -107,4 +125,93 @@ export function parseEligibilityModelText(raw: string): EligibilityParseOk | Eli
     return { ok: false, error: 'reason 必须是非空字符串' }
   }
   return { ok: true, needFrontendFix: flag, reason: reason.trim() }
+}
+
+/**
+ * Call DeepSeek chat-completions to decide whether the ticket still needs a frontend fix.
+ * @param detail - bug platform ticket detail (no secrets in payload).
+ * @param options - API key, model, base URL, optional fetch.
+ * @returns parsed eligibility decision or structured error (never throws for HTTP/body faults).
+ */
+export async function assessNeedFrontendFix(
+  detail: BugTicketDetail,
+  options: EligibilityPreflightOptions,
+): Promise<EligibilityParseOk | EligibilityParseErr> {
+  const apiKey = options.apiKey.trim()
+  if (apiKey.length === 0) {
+    return { ok: false, error: '缺少 DEEPSEEK_API_KEY，跳过是否改前端判断' }
+  }
+
+  const model = options.model?.trim() || DEFAULT_ELIGIBILITY_MODEL
+  const baseURL = (options.baseURL?.trim() || DEFAULT_ELIGIBILITY_BASE_URL).replace(/\/$/, '')
+  const fetchImpl = options.fetchImpl ?? globalThis.fetch
+
+  const body = {
+    model,
+    stream: false,
+    messages: [
+      { role: 'system', content: ELIGIBILITY_SYSTEM_PROMPT },
+      { role: 'user', content: buildEligibilityUserPayload(detail) },
+    ],
+  }
+
+  let response: Response
+  try {
+    response = await fetchImpl(`${baseURL}/chat/completions`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(20_000),
+    })
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    return { ok: false, error: `是否改前端判断网络失败: ${message}` }
+  }
+
+  if (!response.ok) {
+    let detailText = ''
+    try {
+      detailText = (await response.text()).slice(0, 400)
+    } catch {
+      // response.text() I/O failure: HTTP status alone is enough for the error string.
+    }
+    return {
+      ok: false,
+      error: `是否改前端判断 HTTP ${response.status}${detailText.length > 0 ? `: ${detailText}` : ''}`,
+    }
+  }
+
+  let payload: unknown
+  try {
+    payload = await response.json()
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    return { ok: false, error: `是否改前端判断响应非 JSON: ${message}` }
+  }
+
+  const text = extractAssistantText(payload)
+  if (text === null || text.trim().length === 0) {
+    return { ok: false, error: '是否改前端判断未返回可用文本' }
+  }
+  return parseEligibilityModelText(text)
+}
+
+/**
+ * @param payload - chat.completions JSON body.
+ * @returns assistant message text, or null when missing.
+ */
+function extractAssistantText(payload: unknown): string | null {
+  if (payload === null || typeof payload !== 'object' || Array.isArray(payload)) return null
+  const choices = (payload as { choices?: unknown }).choices
+  if (!Array.isArray(choices) || choices.length === 0) return null
+  const first = choices[0]
+  if (first === null || typeof first !== 'object' || Array.isArray(first)) return null
+  const message = (first as { message?: unknown }).message
+  if (message === null || typeof message !== 'object' || Array.isArray(message)) return null
+  const content = (message as { content?: unknown }).content
+  if (typeof content === 'string') return content
+  return null
 }
