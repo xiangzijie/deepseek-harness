@@ -125,5 +125,12 @@ describe('BatchProgress', () => {
     expect(lines.some(l => l.includes('#2'))).toBe(true)
     const snap = JSON.parse(readFileSync(path, 'utf8')) as ProgressSnapshot
     expect(snap.queue).toEqual([1, 2])
+    expect(snap.completed[0]?.summary).toContain('已修复待验证')
+    expect(snap.completed[1]).toEqual({
+      ticketId: 2,
+      index: 2,
+      total: 2,
+      summary: 'failed: x',
+    })
   })
 })

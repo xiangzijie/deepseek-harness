@@ -106,6 +106,7 @@ export class BatchProgress {
 
   /**
    * Append a ticket id if it is not already in the queue (whitelist backfill).
+   * Used when onTicketStart sees an id not present in the onQueue snapshot (defensive whitelist backfill).
    * @param ticketId - platform id.
    */
   enqueue(ticketId: number): void {

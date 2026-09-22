@@ -295,6 +295,7 @@ async function runWithLock(
   const gitlabToken = resolveGitlabToken(cfg.gitlab.tokenEnv)
   const deepseekBaseURL = process.env['DEEPSEEK_BASE_URL']?.trim()
   const visionModel = process.env['BUG_PLATFORM_VISION_MODEL']?.trim()
+  const eligibilityModel = process.env['BUG_PLATFORM_ELIGIBILITY_MODEL']?.trim()
 
   const mappingPath = cfg.mappingFile
   const statePath = cfg.stateFile
@@ -345,9 +346,9 @@ async function runWithLock(
       ...(deepseekBaseURL === undefined || deepseekBaseURL.length === 0
         ? {}
         : { baseURL: deepseekBaseURL }),
-      ...(process.env['BUG_PLATFORM_ELIGIBILITY_MODEL']?.trim()
-        ? { model: process.env['BUG_PLATFORM_ELIGIBILITY_MODEL'].trim() }
-        : {}),
+      ...(eligibilityModel === undefined || eligibilityModel.length === 0
+        ? {}
+        : { model: eligibilityModel }),
     },
     // Spawn harness `apps/cli` with product worktree as cwd — never `pnpm dsh` inside dkh-*.
     agentRunner: createDefaultAgentRunner({
