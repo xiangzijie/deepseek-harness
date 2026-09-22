@@ -105,6 +105,17 @@ export class BatchProgress {
   }
 
   /**
+   * Append a ticket id if it is not already in the queue (whitelist backfill).
+   * @param ticketId - platform id.
+   */
+  enqueue(ticketId: number): void {
+    if (this.queue.includes(ticketId)) return
+    this.queue.push(ticketId)
+    this.pending.push(ticketId)
+    this.persist()
+  }
+
+  /**
    * Mark a ticket as in flight (must be next pending head or still in pending).
    * @param ticketId - platform ticket id.
    */

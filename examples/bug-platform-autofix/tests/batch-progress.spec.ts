@@ -100,4 +100,30 @@ describe('BatchProgress', () => {
     vi.advanceTimersByTime(DEFAULT_HEARTBEAT_MS)
     expect(lines.length).toBe(after)
   })
+
+  it('enqueue appends a ticket not already queued', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'dsh-batch-progress-'))
+    tempDirs.push(dir)
+    const path = join(dir, 'progress.json')
+    const lines: string[] = []
+    const progress = new BatchProgress({
+      path,
+      queue: [1],
+      writeLine: (line) => {
+        lines.push(line)
+      },
+      heartbeatMs: 0,
+    })
+    progress.beginRun('whitelist')
+    progress.enqueue(2)
+    progress.enqueue(2)
+    progress.startTicket(1)
+    progress.finishTicket(1, 'skipped: 已修复待验证')
+    progress.startTicket(2)
+    progress.finishTicket(2, 'failed: x')
+    expect(lines.some(l => l.includes('已修复待验证'))).toBe(true)
+    expect(lines.some(l => l.includes('#2'))).toBe(true)
+    const snap = JSON.parse(readFileSync(path, 'utf8')) as ProgressSnapshot
+    expect(snap.queue).toEqual([1, 2])
+  })
 })

@@ -221,6 +221,7 @@ async function runWhitelistRound(
       progress.beginRun('whitelist')
     },
     onTicketStart: (info) => {
+      progress?.enqueue(info.ticketId)
       progress?.startTicket(info.ticketId)
     },
     onTicketEnd: (info) => {
@@ -338,6 +339,15 @@ async function runWithLock(
         ? {}
         : { baseURL: deepseekBaseURL }),
       ...(visionModel === undefined || visionModel.length === 0 ? {} : { model: visionModel }),
+    },
+    eligibility: {
+      apiKey: deepseekApiKey,
+      ...(deepseekBaseURL === undefined || deepseekBaseURL.length === 0
+        ? {}
+        : { baseURL: deepseekBaseURL }),
+      ...(process.env['BUG_PLATFORM_ELIGIBILITY_MODEL']?.trim()
+        ? { model: process.env['BUG_PLATFORM_ELIGIBILITY_MODEL'].trim() }
+        : {}),
     },
     // Spawn harness `apps/cli` with product worktree as cwd — never `pnpm dsh` inside dkh-*.
     agentRunner: createDefaultAgentRunner({
