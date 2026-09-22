@@ -848,6 +848,58 @@ skills:
     await runOneTicket(baseConfig({ client, agentRunner, runGit: cleanCustomGit() }), ticket)
     expect(getTicket).not.toHaveBeenCalled()
   })
+
+  it('skips before claim when eligibility says needFrontendFix false', async () => {
+    const ticket = detail({
+      id: 503,
+      target_menu: '资产核查',
+      // ≥ MIN_DESCRIPTION_CHARS so the cheap context gate does not skip first.
+      description: '曾经的前端问题描述',
+      followups: [{ content: '已修复，待验证', created_at: '2026-09-01T00:00:00.000Z' }],
+    })
+    const { client, followups } = fakeClient({
+      getTicket: async () => ticket,
+    })
+    const agentRunner: AgentRunner = async () => {
+      throw new Error('must not spawn agent')
+    }
+    const outcome = await runOneTicket(
+      baseConfig({
+        client,
+        agentRunner,
+        runGit: cleanCustomGit(),
+        eligibility: {
+          apiKey: 'sk-test',
+          assess: async () => ({ ok: true, needFrontendFix: false, reason: '已修复待验证' }),
+        },
+      }),
+      ticket,
+    )
+    expect(outcome.kind).toBe('skipped')
+    expect(followups.some(f => f.body.status_change === '处理中')).toBe(false)
+    expect(followups.some(f => f.body.content.includes('已修复待验证'))).toBe(true)
+  })
+
+  it('claims when eligibility is uncertain or assess fails', async () => {
+    const ticket = detail({ id: 77, target_menu: '资产核查', description: '待验证环境按钮无响应' })
+    for (const assess of [
+      async () => ({ ok: true as const, needFrontendFix: 'uncertain' as const, reason: '说不清' }),
+      async () => ({ ok: false as const, error: 'network' }),
+    ]) {
+      const { client, followups } = fakeClient({ getTicket: async () => ticket })
+      const agentRunner: AgentRunner = async () => ({ ok: false, summary: 'stop' })
+      await runOneTicket(
+        baseConfig({
+          client,
+          agentRunner,
+          runGit: cleanCustomGit(),
+          eligibility: { apiKey: 'sk-test', assess },
+        }),
+        ticket,
+      )
+      expect(followups.some(f => f.body.status_change === '处理中')).toBe(true)
+    }
+  })
 })
 
 describe('runBatch', () => {

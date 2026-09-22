@@ -1,10 +1,11 @@
 /**
  * End-to-end orchestrator for one ticket / one batch (design §3).
  * Mapping is resolved before any `处理中` claim; home / unmapped /
- * {@link isExcludedTargetMenu} / `autofix: false` never claim. Context precheck
- * and forced-skill resolution run after mapping and asset download, still
- * before claim, so `forceMaxCount` / `forceMaxChars` /
- * `disable-model-invocation` failures skip without `处理中`.
+ * {@link isExcludedTargetMenu} / `autofix: false` never claim. Context precheck,
+ * optional eligibility (`needFrontendFix === false`), and forced-skill resolution
+ * run after mapping and asset download, still before claim, so
+ * `forceMaxCount` / `forceMaxChars` / `disable-model-invocation` failures and
+ * clear no-frontend decisions skip without `处理中`.
  *
  * @module @deepseek-ai/dsh-bug-platform-autofix/orchestrator
  */
@@ -54,6 +55,12 @@ import type { OperatorWorkspace } from './operator-config.ts'
 import type { AgentRunner } from './run-agent.ts'
 import { isExcludedTargetMenu, selectTickets } from './select.ts'
 import type { TicketPhase, TicketStateStore } from './ticket-state.ts'
+import {
+  assessNeedFrontendFix,
+  type EligibilityParseErr,
+  type EligibilityParseOk,
+  type EligibilityPreflightOptions,
+} from './eligibility-preflight.ts'
 import {
   describeScreenshots,
   type VisionPreflightOptions,
@@ -127,6 +134,15 @@ export interface OrchestratorConfig {
    * inject the observation into the agent brief. Omit to skip vision.
    */
   vision?: Omit<VisionPreflightOptions, 'ticketId'>
+  /**
+   * When set, ask a text model whether the ticket still needs a frontend fix
+   * after the cheap context gate and before claim. Omit to skip the check.
+   * Inject `assess` in tests; production uses {@link assessNeedFrontendFix}.
+   */
+  eligibility?: Omit<EligibilityPreflightOptions, 'fetchImpl'> & {
+    fetchImpl?: typeof fetch
+    assess?: (detail: BugTicketDetail) => Promise<EligibilityParseOk | EligibilityParseErr>
+  }
   /**
    * Global skill clone and force-injection limits. When omitted, the brief has
    * no forced-skill section. Production `run-once` always passes this from
@@ -263,6 +279,19 @@ export async function runOneTicket(
   const preStop = assessPreAgentContext(detail.description, screenshotPaths)
   if (preStop !== null) {
     return skipBeforeClaim(config, detail.id, resolved, branchName, preStop)
+  }
+
+  if (config.eligibility !== undefined) {
+    const assessed =
+      config.eligibility.assess !== undefined
+        ? await config.eligibility.assess(detail)
+        : await assessNeedFrontendFix(detail, config.eligibility)
+    if (assessed.ok && assessed.needFrontendFix === false) {
+      return skipBeforeClaim(config, detail.id, resolved, branchName, {
+        category: 'out_of_scope',
+        reason: assessed.reason,
+      })
+    }
   }
 
   let forcedSkills: ForcedSkill[] = []
