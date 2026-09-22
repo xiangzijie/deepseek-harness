@@ -33,6 +33,7 @@ import {
   DEFAULT_EMPTY_BATCH_BACKOFF_SECONDS,
 } from './cli-args.ts'
 import { BatchProgress } from './batch-progress.ts'
+import { claimedOutcomeCount } from './claimed-outcome-count.ts'
 import { loadRepoEnv } from './load-repo-env.ts'
 import { runPollLoop } from './poll-loop.ts'
 
@@ -200,7 +201,7 @@ function resolveBugPlatformBaseUrl(fromYaml: string): string {
  * @param progressPath - path for {@link BatchProgress} snapshot.
  * @param maxTickets - batch size.
  * @param status - optional list status override.
- * @returns number of tickets attempted in this round.
+ * @returns claimed (non-skipped) count used by `--continuous` empty-batch backoff.
  */
 async function runWhitelistRound(
   config: OrchestratorConfig,
@@ -236,7 +237,7 @@ async function runWhitelistRound(
     empty.dispose()
   }
   saveState(statePath, config.stateStore)
-  return batchOutcomes.length
+  return claimedOutcomeCount(batchOutcomes)
 }
 
 async function main(): Promise<void> {
