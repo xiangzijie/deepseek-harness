@@ -29,6 +29,7 @@ export function parseEligibilityModelText(raw: string): EligibilityParseOk | Eli
   try {
     parsed = JSON.parse(body) as unknown
   } catch {
+    // JSON.parse SyntaxError or other non-JSON body: eligibility text is not parseable JSON.
     return { ok: false, error: 'eligibility 响应不是 JSON' }
   }
   if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
