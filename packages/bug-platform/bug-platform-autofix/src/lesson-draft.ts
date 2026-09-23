@@ -217,7 +217,23 @@ export interface ApplyLessonDedupActionInput {
 }
 
 const SECRET_SK = /sk-[A-Za-z0-9._-]+/g
-const SECRET_GITLAB = /GITLAB_TOKEN(?:=\S*)?/g
+const SECRET_GITLAB = /GITLAB_TOKEN(?:=\S*|[:\s]+\S*)?/g
+const SECRET_GLPAT = /glpat-\S+/g
+
+/** Allowed characters for lesson ids used as single path segment filenames. */
+const SAFE_LESSON_ID = /^[A-Za-z0-9._-]+$/
+
+/**
+ * Whether an id is safe to embed in pending/*.md filenames (no traversal or separators).
+ * @param id - index row id or pending file stem segment.
+ * @returns true when id matches {@link SAFE_LESSON_ID} and has no `..`, `/`, or `\\`.
+ */
+function isSafeLessonFilenameId(id: string): boolean {
+  if (id.includes('..') || id.includes('/') || id.includes('\\')) {
+    return false
+  }
+  return SAFE_LESSON_ID.test(id)
+}
 
 /**
  * Remove API key and GitLab token substrings from text that may be written or sent.
@@ -225,7 +241,7 @@ const SECRET_GITLAB = /GITLAB_TOKEN(?:=\S*)?/g
  * @returns text with secret material deleted.
  */
 function stripSecrets(text: string): string {
-  return text.replace(SECRET_SK, '').replace(SECRET_GITLAB, '')
+  return text.replace(SECRET_SK, '').replace(SECRET_GITLAB, '').replace(SECRET_GLPAT, '')
 }
 
 /**
@@ -423,10 +439,14 @@ export function applyLessonDedupAction(input: ApplyLessonDedupActionInput): void
         .map(r => r.id),
     )
     const existingId = input.existingId ?? ''
-    if (!acceptedIds.has(existingId)) {
+    if (!acceptedIds.has(existingId) || !isSafeLessonFilenameId(existingId)) {
       return
     }
-    writePendingLesson(input, `opt-${existingId}-${input.ticketId}`, 'optimize', existingId)
+    const pendingId = `opt-${existingId}-${input.ticketId}`
+    if (!isSafeLessonFilenameId(pendingId)) {
+      return
+    }
+    writePendingLesson(input, pendingId, 'optimize', existingId)
     return
   }
   writePendingLesson(input, `t${input.ticketId}`, 'pending')

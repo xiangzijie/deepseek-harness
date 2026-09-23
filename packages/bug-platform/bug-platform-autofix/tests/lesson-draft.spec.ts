@@ -590,6 +590,85 @@ describe('applyLessonDedupAction', () => {
     expect(indexText).not.toContain('GITLAB_TOKEN')
   })
 
+  it('strips GITLAB_TOKEN colon/space forms and glpat from written markdown', () => {
+    const dir = writeLessonRepo()
+    applyLessonDedupAction({
+      localRoot: dir,
+      index: loadLessonIndex(dir),
+      action: 'create',
+      ticketId: 10,
+      targetMenu: MENU,
+      symptom: 'GITLAB_TOKEN: secretvalue 泄漏',
+      mrUrl: 'http://mr/10',
+      changedFiles: ['src/a.vue'],
+      agentSummary: '使用 glpat-xxx 与 GITLAB_TOKEN secretvalue',
+      ticketDescription: 'unused',
+    })
+    const body = readFileSync(join(dir, 'pending', 't10.md'), 'utf8')
+    expect(body).not.toContain('secretvalue')
+    expect(body).not.toContain('glpat-')
+    expect(body).not.toContain('GITLAB_TOKEN')
+  })
+
+  it('treats optimize as skip when existingId is path-unsafe (index yaml)', () => {
+    const yaml = `lessons:
+  - { id: '../../../evil', status: accepted, target_menu: ${MENU}, symptom: 路径, ticketId: 99, mrUrl: 'http://mr/99', updatedAt: '2026-09-23T00:00:00.000Z' }
+`
+    const dir = writeLessonRepo(yaml)
+    const index = loadLessonIndex(dir)
+    expect(selectDedupRows(index, MENU).some(r => r.id === '../../../evil' && r.status === 'accepted')).toBe(true)
+    const before = readFileSync(join(dir, 'index.yaml'), 'utf8')
+    applyLessonDedupAction({
+      localRoot: dir,
+      index,
+      action: 'optimize',
+      existingId: '../../../evil',
+      ticketId: 10,
+      targetMenu: MENU,
+      symptom: '不应写入',
+      mrUrl: 'http://mr/10',
+      changedFiles: ['src/a.vue'],
+      agentSummary: '无',
+    })
+    expect(readdirSync(join(dir, 'pending'))).toEqual([])
+    expect(readFileSync(join(dir, 'index.yaml'), 'utf8')).toBe(before)
+    expect(existsSync(join(dir, 'evil.md'))).toBe(false)
+  })
+
+  it('treats optimize as skip when existingId fails safe filename rules (in-memory index)', () => {
+    const dir = writeLessonRepo()
+    const base = loadLessonIndex(dir)
+    const index: LessonIndex = {
+      lessons: [
+        ...base.lessons,
+        {
+          id: '..',
+          status: 'accepted',
+          target_menu: MENU,
+          symptom: '点号穿越',
+          ticketId: 99,
+          mrUrl: 'http://mr/99',
+          updatedAt: '2026-09-23T00:00:00.000Z',
+        },
+      ],
+    }
+    const before = readFileSync(join(dir, 'index.yaml'), 'utf8')
+    applyLessonDedupAction({
+      localRoot: dir,
+      index,
+      action: 'optimize',
+      existingId: '..',
+      ticketId: 10,
+      targetMenu: MENU,
+      symptom: '不应写入',
+      mrUrl: 'http://mr/10',
+      changedFiles: ['src/a.vue'],
+      agentSummary: '无',
+    })
+    expect(readdirSync(join(dir, 'pending'))).toEqual([])
+    expect(readFileSync(join(dir, 'index.yaml'), 'utf8')).toBe(before)
+  })
+
   it('creates pending/ when the directory is missing', () => {
     const dir = mkdtempSync(join(tmpdir(), 'ldraft-nopend-'))
     writeFileSync(join(dir, 'index.yaml'), 'lessons: []\n')
