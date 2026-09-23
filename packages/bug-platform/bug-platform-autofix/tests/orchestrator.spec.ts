@@ -790,6 +790,67 @@ skills:
     expect(brief).toContain('### fix-frontend-ticket')
     expect(brief).toContain('Do this.')
     expect(brief).toContain('强制 skill 名称：fix-frontend-ticket')
+    expect(brief).not.toContain('已入库经验')
+  })
+
+  it('injects accepted lesson bodies into the agent brief', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'lessons-'))
+    mkdirSync(join(dir, 'accepted'), { recursive: true })
+    writeFileSync(
+      join(dir, 'index.yaml'),
+      `lessons:
+  - { id: t2, status: accepted, target_menu: '资产核查', symptom: '按钮无响应', ticketId: 2, mrUrl: u, updatedAt: '2026-01-02T00:00:00.000Z' }
+`,
+    )
+    writeFileSync(join(dir, 'accepted', 't2.md'), '改 src/x.vue 的 click')
+    const ticket = detail({ id: 428, target_menu: '资产核查' })
+    const { client } = fakeClient({})
+    const agentRunner = vi.fn(async (_opts: { cwd: string; brief: string }) => ({
+      ok: false,
+      summary: 'stop-after-brief',
+    }))
+
+    await runOneTicket(
+      baseConfig({
+        client,
+        agentRunner,
+        runGit: cleanCustomGit(),
+        lessons: { local: dir, injectMax: 3 },
+      }),
+      ticket,
+    )
+
+    const brief = agentRunner.mock.calls[0]?.[0]?.brief ?? ''
+    expect(brief).toContain('## 已入库经验')
+    expect(brief).toContain('### t2')
+    expect(brief).toContain('改 src/x.vue 的 click')
+  })
+
+  it('still claims when lessons.local is a missing directory', async () => {
+    const ticket = detail({ id: 428, target_menu: '资产核查' })
+    const { client, followups, order } = fakeClient({})
+    const agentRunner = vi.fn(async (_opts: { cwd: string; brief: string }) => ({
+      ok: false,
+      summary: 'stop-after-claim',
+    }))
+    const missing = join(tmpdir(), `lessons-missing-${Date.now()}`)
+
+    const outcome = await runOneTicket(
+      baseConfig({
+        client,
+        agentRunner,
+        runGit: cleanCustomGit(),
+        lessons: { local: missing, injectMax: 3 },
+      }),
+      ticket,
+    )
+
+    expect(order.some(s => s.includes('处理中'))).toBe(true)
+    expect(followups.some(f => f.body.status_change === '处理中')).toBe(true)
+    expect(agentRunner).toHaveBeenCalled()
+    expect(outcome.kind).not.toBe('skipped')
+    const brief = agentRunner.mock.calls[0]?.[0]?.brief ?? ''
+    expect(brief).not.toContain('已入库经验')
   })
 
   it('skips without claiming when forced skills exceed forceMaxCount', async () => {

@@ -34,6 +34,8 @@ import {
   type RunGit,
   type WorkspaceRoots,
 } from './git-workspace.ts'
+import { loadLessonIndex } from './lesson-index.ts'
+import { loadAcceptedLessonBodies } from './lesson-inject.ts'
 import {
   resolveForcedSkills,
   type ForcedSkill,
@@ -155,6 +157,17 @@ export interface OrchestratorConfig {
     forceMaxCount: number
     /** Maximum combined forced-skill body characters. */
     forceMaxChars: number
+  }
+  /**
+   * Lessons clone used to inject accepted bodies into the agent brief.
+   * When omitted, the brief has no lessons section. Inject load failures
+   * omit the section and do not skip claim.
+   */
+  lessons?: {
+    /** Local clone root containing `index.yaml` and `accepted/`. */
+    local: string
+    /** Maximum accepted bodies to inject for this ticket's menu. */
+    injectMax: number
   }
   /** When true (default), write an optional skip followup for unmapped/home. */
   writeSkipFollowup?: boolean
@@ -377,6 +390,23 @@ export async function runOneTicket(
     branch: branchName,
   })
 
+  let lessonBodies: { id: string; symptom: string; body: string }[] = []
+  if (config.lessons !== undefined) {
+    try {
+      const index = loadLessonIndex(config.lessons.local)
+      lessonBodies = loadAcceptedLessonBodies({
+        localRoot: config.lessons.local,
+        index,
+        targetMenu: detail.target_menu ?? '',
+        injectMax: config.lessons.injectMax,
+      })
+    } catch (error) {
+      // Unreadable lessons clone: omit inject; ticket claim continues.
+      void error
+      lessonBodies = []
+    }
+  }
+
   const brief = buildAgentBrief({
     detail,
     resolved,
@@ -386,6 +416,7 @@ export async function runOneTicket(
     missingAssets,
     ...(visionObservation === undefined ? {} : { visionObservation }),
     ...(forcedSkills.length === 0 ? {} : { forcedSkills }),
+    ...(lessonBodies.length === 0 ? {} : { lessons: lessonBodies }),
   })
 
   let agentResult: { ok: boolean; summary: string }
