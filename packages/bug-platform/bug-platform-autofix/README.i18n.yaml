@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write packages/bug-platform/bug-platform-autofix/README.md
-README.md: b1691d692a36e7409cb206b22f6d557ebad5efb5
-README.zh.md: e9b3f8005869e65508b1009622feff4f271d4af6
+README.md: 69c6bdb9d5573e6d6fcf55021a280c6325b807f4
+README.zh.md: 442648ee7cb9f3aafc8c751e5f7f3af953582336

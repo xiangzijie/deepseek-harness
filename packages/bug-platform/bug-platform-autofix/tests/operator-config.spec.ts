@@ -157,6 +157,17 @@ run: {}
     expect(loadOperatorConfig(path).lessons).toBeUndefined()
   })
 
+  it('loads lessons with explicit injectMax from yaml', () => {
+    const path = writeYaml(`${minimalYaml(`
+  - { id: ws1, localRoot: 'D:/w', gitlabProjectId: 1, productBranch: 'b', mappingRepo: custom }
+`)}lessons:
+  repo: 'git@x:y.git'
+  local: 'D:/l'
+  injectMax: 5
+`)
+    expect(loadOperatorConfig(path).lessons?.injectMax).toBe(5)
+  })
+
   it('loads lessons with injectMax default 3', () => {
     const path = writeYaml(`
 harnessRoot: 'D:/h'

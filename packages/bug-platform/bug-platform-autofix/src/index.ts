@@ -19,6 +19,7 @@ export type {
   OperatorBugPlatformConfig,
   OperatorConfig,
   OperatorGitlabConfig,
+  OperatorLessonsConfig,
   OperatorRunConfig,
   OperatorSkillsConfig,
   OperatorWorkspace,
