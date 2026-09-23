@@ -36,3 +36,7 @@ run:
   maxTickets: 1
   lintEnabled: false
   buildEnabled: false
+lessons:
+  repo: 'git@gitlab.info.dbappsecurity.com.cn:jgts/autofix-lessons.git'
+  local: 'D:/CODE/COMPANY/dkh-bugFix-project/autofix-lessons'
+  injectMax: 3

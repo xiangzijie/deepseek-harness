@@ -139,6 +139,69 @@ run: {}
     expect(cfg.workspaces[0]?.autofix).toBe(true)
   })
 
+  it('omits lessons when the section is absent', () => {
+    const path = writeYaml(`
+harnessRoot: 'D:/h'
+bugPlatform: { baseUrl: 'http://x', projectId: 1 }
+gitlab: { host: 'http://g' }
+mappingFile: 'D:/m'
+stateFile: 'D:/s'
+progressFile: 'D:/p'
+assetsDir: 'D:/a'
+workspaces:
+  - { id: ws1, localRoot: 'D:/w', gitlabProjectId: 1, productBranch: 'b', mappingRepo: custom }
+skills:
+  { globalRepo: 'git@x:y.git', globalLocal: 'D:/g', personalRoot: 'D:/p' }
+run: {}
+`)
+    expect(loadOperatorConfig(path).lessons).toBeUndefined()
+  })
+
+  it('loads lessons with injectMax default 3', () => {
+    const path = writeYaml(`
+harnessRoot: 'D:/h'
+bugPlatform: { baseUrl: 'http://x', projectId: 1 }
+gitlab: { host: 'http://g' }
+mappingFile: 'D:/m'
+stateFile: 'D:/s'
+progressFile: 'D:/p'
+assetsDir: 'D:/a'
+workspaces:
+  - { id: ws1, localRoot: 'D:/w', gitlabProjectId: 1, productBranch: 'b', mappingRepo: custom }
+skills:
+  { globalRepo: 'git@x:y.git', globalLocal: 'D:/g', personalRoot: 'D:/p' }
+run: {}
+lessons:
+  repo: 'git@gitlab.example:jgts/autofix-lessons.git'
+  local: 'D:/autofix-lessons'
+`)
+    expect(loadOperatorConfig(path).lessons).toEqual({
+      repo: 'git@gitlab.example:jgts/autofix-lessons.git',
+      local: 'D:/autofix-lessons',
+      injectMax: 3,
+    })
+  })
+
+  it('rejects lessons missing local', () => {
+    const path = writeYaml(`
+harnessRoot: 'D:/h'
+bugPlatform: { baseUrl: 'http://x', projectId: 1 }
+gitlab: { host: 'http://g' }
+mappingFile: 'D:/m'
+stateFile: 'D:/s'
+progressFile: 'D:/p'
+assetsDir: 'D:/a'
+workspaces:
+  - { id: ws1, localRoot: 'D:/w', gitlabProjectId: 1, productBranch: 'b', mappingRepo: custom }
+skills:
+  { globalRepo: 'git@x:y.git', globalLocal: 'D:/g', personalRoot: 'D:/p' }
+run: {}
+lessons:
+  repo: 'git@x:y.git'
+`)
+    expect(() => loadOperatorConfig(path)).toThrow(/lessons\.local/)
+  })
+
   it('rejects duplicate mappingRepo', () => {
     const path = writeYaml(minimalYaml(`
   - { id: a, localRoot: 'D:/a', gitlabProjectId: 1, productBranch: 'b', mappingRepo: custom }
@@ -161,5 +224,6 @@ run: {}
     expect(cfg.workspaces).toHaveLength(3)
     expect(cfg.workspaceById('home')?.autofix).toBe(false)
     expect(cfg.workspaceByMappingRepo('ailpha')?.productBranch).toBe('dkh-ailpha-jinan')
+    expect(cfg.lessons?.local).toContain('autofix-lessons')
   })
 })

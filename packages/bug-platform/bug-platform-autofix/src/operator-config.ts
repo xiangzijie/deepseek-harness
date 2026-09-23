@@ -54,6 +54,16 @@ export interface OperatorRunConfig {
   buildEnabled: boolean
 }
 
+/** Independent GitLab lessons repo and local clone for inject/draft. */
+export interface OperatorLessonsConfig {
+  repo: string
+  local: string
+  injectMax: number
+}
+
+/** Default cap on lessons injected into a single run when injectMax is omitted. */
+export const DEFAULT_LESSON_INJECT_MAX = 3
+
 /** Parsed operator.yaml with workspace lookup helpers. */
 export interface OperatorConfig {
   harnessRoot: string
@@ -66,6 +76,8 @@ export interface OperatorConfig {
   workspaces: readonly OperatorWorkspace[]
   skills: OperatorSkillsConfig
   run: OperatorRunConfig
+  /** When absent, later stages skip lesson inject and draft. */
+  lessons?: OperatorLessonsConfig
   /**
    * Resolve a workspace by menu-mapping repo key.
    * @param repo - mapping `repo` field (`custom` | `ailpha` | `home`).
@@ -123,6 +135,7 @@ export function loadOperatorConfig(configPath: string): OperatorConfig {
   const workspaces = parseWorkspaces(root.workspaces)
   const skills = parseSkills(root.skills)
   const run = parseRun(root.run)
+  const lessons = parseLessons(root.lessons)
 
   const byMappingRepo = new Map<MappingRepo, OperatorWorkspace>()
   const byId = new Map<string, OperatorWorkspace>()
@@ -142,6 +155,7 @@ export function loadOperatorConfig(configPath: string): OperatorConfig {
     workspaces,
     skills,
     run,
+    ...(lessons === undefined ? {} : { lessons }),
     workspaceByMappingRepo(repo: MappingRepo): OperatorWorkspace | undefined {
       return byMappingRepo.get(repo)
     },
@@ -222,6 +236,24 @@ function parseRun(value: unknown): OperatorRunConfig {
     operatorId: optionalString(obj.operatorId, DEFAULT_RUN_OPERATOR_ID, 'run.operatorId'),
     lintEnabled: optionalBoolean(obj.lintEnabled, false, 'run.lintEnabled'),
     buildEnabled: optionalBoolean(obj.buildEnabled, false, 'run.buildEnabled'),
+  }
+}
+
+/**
+ * Parse optional lessons section. Absent means this run injects and drafts nothing.
+ * @param value - raw yaml value.
+ * @returns validated lessons config, or undefined when omitted.
+ */
+function parseLessons(value: unknown): OperatorLessonsConfig | undefined {
+  if (value === undefined || value === null) return undefined
+  if (typeof value !== 'object' || Array.isArray(value)) {
+    throw new Error('operator-config: lessons must be an object')
+  }
+  const obj = value as Record<string, unknown>
+  return {
+    repo: requireString(obj.repo, 'lessons.repo'),
+    local: requireString(obj.local, 'lessons.local'),
+    injectMax: optionalNumber(obj.injectMax, DEFAULT_LESSON_INJECT_MAX, 'lessons.injectMax'),
   }
 }
 
