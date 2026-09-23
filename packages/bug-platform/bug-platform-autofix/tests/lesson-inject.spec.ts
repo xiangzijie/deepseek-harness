@@ -1,23 +1,7 @@
 import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { afterEach, describe, expect, it, vi } from 'vitest'
-
-/** Injected read failure for default readFile I/O tests. */
-const readInject = vi.hoisted(() => ({ err: undefined as unknown }))
-
-vi.mock('node:fs', async (importOriginal) => {
-  const mod = await importOriginal<typeof import('node:fs')>()
-  return {
-    ...mod,
-    readFileSync: (...args: Parameters<typeof mod.readFileSync>) => {
-      if (readInject.err !== undefined) {
-        throw readInject.err
-      }
-      return mod.readFileSync(...args)
-    },
-  }
-})
+import { describe, expect, it } from 'vitest'
 
 import { loadLessonIndex } from '../src/lesson-index.ts'
 import {
@@ -26,10 +10,6 @@ import {
 } from '../src/lesson-inject.ts'
 
 describe('loadAcceptedLessonBodies', () => {
-  afterEach(() => {
-    readInject.err = undefined
-  })
-
   it('reads only the newest injectMax accepted bodies for the menu', () => {
     const dir = mkdtempSync(join(tmpdir(), 'linj-'))
     mkdirSync(join(dir, 'accepted'), { recursive: true })
@@ -88,14 +68,36 @@ describe('loadAcceptedLessonBodies', () => {
     expect(bodies[0]?.symptom).toBe('sym')
   })
 
+  it('does not truncate bodies exactly DEFAULT_LESSON_BODY_CHARS long', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'linj-exact-'))
+    mkdirSync(join(dir, 'accepted'), { recursive: true })
+    writeFileSync(
+      join(dir, 'index.yaml'),
+      `lessons:
+  - { id: exact, status: accepted, target_menu: M, symptom: sym, ticketId: 1, mrUrl: u, updatedAt: '2026-01-01T00:00:00.000Z' }
+`,
+    )
+    const raw = 'y'.repeat(DEFAULT_LESSON_BODY_CHARS)
+    writeFileSync(join(dir, 'accepted', 'exact.md'), raw)
+    const bodies = loadAcceptedLessonBodies({
+      localRoot: dir,
+      index: loadLessonIndex(dir),
+      targetMenu: 'M',
+      injectMax: 1,
+    })
+    expect(bodies).toHaveLength(1)
+    expect(bodies[0]?.body).toBe(raw)
+    expect(bodies[0]?.body).not.toContain('已截断')
+  })
+
   it('skips missing accepted files without throwing', () => {
     const dir = mkdtempSync(join(tmpdir(), 'linj-miss-'))
     mkdirSync(join(dir, 'accepted'), { recursive: true })
     writeFileSync(
       join(dir, 'index.yaml'),
       `lessons:
-  - { id: hit, status: accepted, target_menu: M, symptom: ok, ticketId: 1, mrUrl: u, updatedAt: '2026-01-02T00:00:00.000Z' }
-  - { id: gone, status: accepted, target_menu: M, symptom: miss, ticketId: 2, mrUrl: u, updatedAt: '2026-01-01T00:00:00.000Z' }
+  - { id: gone, status: accepted, target_menu: M, symptom: miss, ticketId: 2, mrUrl: u, updatedAt: '2026-01-02T00:00:00.000Z' }
+  - { id: hit, status: accepted, target_menu: M, symptom: ok, ticketId: 1, mrUrl: u, updatedAt: '2026-01-01T00:00:00.000Z' }
 `,
     )
     writeFileSync(join(dir, 'accepted', 'hit.md'), 'present')
@@ -153,26 +155,5 @@ describe('loadAcceptedLessonBodies', () => {
         },
       }),
     ).toThrow('read failed')
-  })
-
-  it('rethrows non-ENOENT read failures from the default readFile', () => {
-    const dir = mkdtempSync(join(tmpdir(), 'linj-io-'))
-    mkdirSync(join(dir, 'accepted'), { recursive: true })
-    writeFileSync(
-      join(dir, 'index.yaml'),
-      `lessons:
-  - { id: t1, status: accepted, target_menu: M, symptom: s, ticketId: 1, mrUrl: u, updatedAt: '2026-01-01T00:00:00.000Z' }
-`,
-    )
-    writeFileSync(join(dir, 'accepted', 't1.md'), 'body')
-    readInject.err = Object.assign(new Error('EACCES'), { code: 'EACCES' })
-    expect(() =>
-      loadAcceptedLessonBodies({
-        localRoot: dir,
-        index: loadLessonIndex(dir),
-        targetMenu: 'M',
-        injectMax: 1,
-      }),
-    ).toThrow('EACCES')
   })
 })

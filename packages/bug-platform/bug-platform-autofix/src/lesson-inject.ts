@@ -38,7 +38,7 @@ export interface LoadAcceptedLessonBodiesOptions {
  * Read accepted markdown bodies for the newest inject hits on one menu.
  * @param opts - clone root, index, menu filter, and inject cap.
  * @returns bodies in index selection order (newest first); missing files are skipped.
- * @throws rethrows non-ENOENT read failures from the default reader.
+ * @throws rethrows non-ENOENT read failures from any reader.
  */
 export function loadAcceptedLessonBodies(opts: LoadAcceptedLessonBodiesOptions): AcceptedLessonBody[] {
   const { localRoot, index, targetMenu, injectMax } = opts
@@ -56,7 +56,6 @@ export function loadAcceptedLessonBodies(opts: LoadAcceptedLessonBodiesOptions):
       if (code === 'ENOENT') {
         continue
       }
-      /* v8 ignore next -- Non-ENOENT readFileSync failures need a host I/O fault. */
       throw err
     }
 
