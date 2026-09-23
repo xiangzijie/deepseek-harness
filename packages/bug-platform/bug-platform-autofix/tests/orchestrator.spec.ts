@@ -766,7 +766,10 @@ skills:
     )
     const ticket = detail({ id: 428, target_menu: '资产核查' })
     const { client } = fakeClient({})
-    const agentRunner = vi.fn(async () => ({ ok: false, summary: 'stop-after-brief' }))
+    const agentRunner = vi.fn(async (_opts: { cwd: string; brief: string }) => ({
+      ok: false,
+      summary: 'stop-after-brief',
+    }))
 
     await runOneTicket(
       baseConfig({

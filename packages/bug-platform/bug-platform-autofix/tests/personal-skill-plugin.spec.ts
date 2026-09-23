@@ -2,6 +2,7 @@ import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
+import type { SkillCandidate } from '@deepseek-ai/dsh-skill'
 import {
   apply,
   Config,
@@ -9,6 +10,18 @@ import {
   inject,
   name,
 } from '../src/personal-skill-plugin.ts'
+
+/**
+ * Narrow `SkillProvider.list` to a candidate array (the union also allows observations).
+ * @param listed - provider list result.
+ * @returns skill candidates.
+ */
+function asSkillCandidates(listed: readonly SkillCandidate[] | object): readonly SkillCandidate[] {
+  if (!Array.isArray(listed)) {
+    throw new Error('expected SkillCandidate[]')
+  }
+  return listed
+}
 
 /**
  * Write a one-level personal skill tree under a fresh temp directory.
@@ -50,7 +63,7 @@ describe('createPersonalSkillProvider', () => {
       'hidden/SKILL.md':
         '---\nname: hidden\ndescription: secret\ndisable-model-invocation: true\n---\nNo.\n',
     })
-    const listed = await createPersonalSkillProvider(root).list({})
+    const listed = asSkillCandidates(await createPersonalSkillProvider(root).list({}))
     expect(listed.map(skill => skill.name)).toEqual(['foo'])
   })
 
@@ -72,9 +85,11 @@ describe('createPersonalSkillProvider', () => {
       'bar.md': '---\nname: bar\ndescription: flat bar\n---\nFlat body.\n',
     })
     const provider = createPersonalSkillProvider(root)
-    const listed = await provider.list({})
+    const listed = asSkillCandidates(await provider.list({}))
     expect(listed.map(skill => skill.name)).toEqual(['bar'])
-    const loaded = await provider.get(listed[0]!, {})
+    const first = listed[0]
+    if (first === undefined) throw new Error('expected listed skill')
+    const loaded = await provider.get(first, {})
     expect(loaded?.content).toContain('Flat body.')
     expect(loaded?.source).toBe('custom')
   })
@@ -103,7 +118,7 @@ describe('createPersonalSkillProvider', () => {
     const root = writePersonalRoot({
       'eof.md': '---\nname: eof\ndescription: x\n---',
     })
-    const listed = await createPersonalSkillProvider(root).list({})
+    const listed = asSkillCandidates(await createPersonalSkillProvider(root).list({}))
     expect(listed.map(skill => skill.name)).toEqual(['eof'])
   })
 
