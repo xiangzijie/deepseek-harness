@@ -85,10 +85,7 @@ function parseRow(raw: unknown): LessonIndexRow | undefined {
     updatedAt: obj.updatedAt,
   }
 
-  if (obj.optimizeOf !== undefined) {
-    if (typeof obj.optimizeOf !== 'string') {
-      return undefined
-    }
+  if (typeof obj.optimizeOf === 'string' && obj.optimizeOf) {
     row.optimizeOf = obj.optimizeOf
   }
 

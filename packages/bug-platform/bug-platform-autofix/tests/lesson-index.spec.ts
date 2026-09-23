@@ -52,4 +52,22 @@ describe('lesson-index', () => {
     mkdirSync(dir, { recursive: true })
     expect(loadLessonIndex(dir).lessons).toEqual([])
   })
+
+  it('keeps valid rows when optimizeOf is null or non-string', () => {
+    const yaml = `
+lessons:
+  - id: null-opt
+    status: accepted
+    target_menu: 威胁总览
+    symptom: X
+    ticketId: 10
+    mrUrl: 'http://mr/10'
+    updatedAt: '2026-09-21T00:00:00.000Z'
+    optimizeOf: null
+`
+    const index = loadLessonIndex(writeIndex(yaml))
+    const row = index.lessons.find(r => r.id === 'null-opt')
+    expect(row).toBeDefined()
+    expect(row?.optimizeOf).toBeUndefined()
+  })
 })
