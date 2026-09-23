@@ -93,18 +93,34 @@ function parseRow(raw: unknown): LessonIndexRow | undefined {
 }
 
 /**
+ * Compare two rows for descending `updatedAt` sort.
+ * @param a - first row.
+ * @param b - second row.
+ * @returns sort order for Array.prototype.sort.
+ */
+function compareUpdatedAtDesc(a: LessonIndexRow, b: LessonIndexRow): number {
+  if (a.updatedAt < b.updatedAt) {
+    return 1
+  }
+  if (a.updatedAt > b.updatedAt) {
+    return -1
+  }
+  return 0
+}
+
+/**
  * Sort lesson rows by `updatedAt` descending (newest first).
  * @param rows - rows to sort (not mutated).
  * @returns new array sorted by ISO timestamp.
  */
 function sortByUpdatedAtDesc(rows: LessonIndexRow[]): LessonIndexRow[] {
-  return [...rows].sort((a, b) => (a.updatedAt < b.updatedAt ? 1 : a.updatedAt > b.updatedAt ? -1 : 0))
+  return [...rows].sort(compareUpdatedAtDesc)
 }
 
 /**
  * Load lessons index from `localRoot/index.yaml`.
  * @param localRoot - directory containing `index.yaml` (lessons repo clone root).
- * @returns parsed index; missing file or invalid root yields `{ lessons: [] }`.
+ * @returns parsed index; missing file, yaml parse failure, or invalid root yields `{ lessons: [] }`.
  * @throws rethrows non-ENOENT read failures.
  */
 export function loadLessonIndex(localRoot: string): LessonIndex {
@@ -117,10 +133,16 @@ export function loadLessonIndex(localRoot: string): LessonIndex {
     if (code === 'ENOENT') {
       return { lessons: [] }
     }
+    /* v8 ignore next -- Non-ENOENT readFileSync failures need a host I/O fault. */
     throw err
   }
 
-  const parsed = parse(rawText)
+  let parsed: unknown
+  try {
+    parsed = parse(rawText)
+  } catch {
+    return { lessons: [] }
+  }
   if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
     return { lessons: [] }
   }
@@ -153,7 +175,7 @@ export function selectAcceptedForInject(
   injectMax: number,
 ): LessonIndexRow[] {
   const accepted = index.lessons.filter(r => r.status === 'accepted' && r.target_menu === menu)
-  return sortByUpdatedAtDesc(accepted).slice(0, injectMax)
+  return sortByUpdatedAtDesc(accepted).slice(0, Math.max(0, injectMax))
 }
 
 /**
