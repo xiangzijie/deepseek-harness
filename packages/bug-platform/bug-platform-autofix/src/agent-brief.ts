@@ -5,6 +5,7 @@
 
 import type { BugTicketDetail } from '@deepseek-ai/dsh-bug-platform-http'
 import { autofixStopBriefRules } from './autofix-stop.ts'
+import type { AcceptedLessonBody } from './lesson-inject.ts'
 import type { ResolvedMenu } from './menu-mapping.ts'
 
 /** One orchestrator-injected forced skill (name + Markdown body). */
@@ -41,7 +42,7 @@ export interface AgentBriefInput {
    * Accepted lesson bodies for this ticket's `target_menu`. When non-empty,
    * bodies appear under `## 已入库经验` after the forced-skill section.
    */
-  lessons?: readonly { id: string; symptom: string; body: string }[]
+  lessons?: readonly AcceptedLessonBody[]
 }
 
 /**

@@ -397,12 +397,11 @@ export async function runOneTicket(
       lessonBodies = loadAcceptedLessonBodies({
         localRoot: config.lessons.local,
         index,
-        targetMenu: detail.target_menu ?? '',
+        targetMenu: targetMenu,
         injectMax: config.lessons.injectMax,
       })
-    } catch (error) {
+    } catch {
       // Unreadable lessons clone: omit inject; ticket claim continues.
-      void error
       lessonBodies = []
     }
   }
