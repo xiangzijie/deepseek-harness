@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { join } from 'node:path'
+import { pathToFileURL } from 'node:url'
 import {
   renderHeadlessSkillPatch,
   resolvePersonalSkillPluginPath,
@@ -22,9 +23,12 @@ describe('renderHeadlessSkillPatch', () => {
 })
 
 describe('resolvePersonalSkillPluginPath', () => {
-  it('points at the source-plane personal plugin under harnessRoot', () => {
-    expect(resolvePersonalSkillPluginPath('D:/h')).toBe(
+  it('returns a file URL so Windows ESM does not treat D: as a protocol', () => {
+    const href = resolvePersonalSkillPluginPath('D:/h')
+    const expected = pathToFileURL(
       join('D:/h', 'packages/bug-platform/bug-platform-autofix/src/personal-skill-plugin.ts'),
-    )
+    ).href
+    expect(href).toBe(expected)
+    expect(href.startsWith('file:')).toBe(true)
   })
 })

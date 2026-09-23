@@ -8,6 +8,7 @@
  */
 
 import { join } from 'node:path'
+import { pathToFileURL } from 'node:url'
 import { stringify } from 'yaml'
 
 /** Inputs for {@link renderHeadlessSkillPatch}. */
@@ -16,7 +17,7 @@ export interface HeadlessSkillPatchInput {
   globalSkillsDir: string
   /** Operator-scoped personal root (`personalRoot/operatorId`). */
   personalRoot: string
-  /** Cordis plugin module path for the personal provider row. */
+  /** Cordis plugin module specifier; Windows needs a `file://` URL, not `D:\`. */
   personalPluginPath: string
 }
 
@@ -49,16 +50,20 @@ export function renderHeadlessSkillPatch(input: HeadlessSkillPatchInput): string
 }
 
 /**
- * Absolute source-plane path of the personal skill plugin.
- * Headless spawn uses tsx ESM; a `.ts` path loads without a prior `lib/` build
- * of this extra export. Built consumers may import
+ * Absolute source-plane path of the personal skill plugin, as a `file://` URL.
+ * Cordis `import(entry.name)` goes through Node ESM; a Windows `D:\...` path is
+ * parsed as protocol `d:` and throws `ERR_UNSUPPORTED_ESM_URL_SCHEME`.
+ * Headless spawn uses tsx ESM; a `.ts` file URL loads without a prior `lib/`
+ * build of this extra export. Built consumers may import
  * `@deepseek-ai/dsh-bug-platform-autofix/personal-skill-plugin` instead.
  * @param harnessRoot - absolute deepseek-harness repo root.
- * @returns absolute `personal-skill-plugin.ts` path.
+ * @returns `file://` URL of `personal-skill-plugin.ts`.
  */
 export function resolvePersonalSkillPluginPath(harnessRoot: string): string {
-  return join(
-    harnessRoot,
-    'packages/bug-platform/bug-platform-autofix/src/personal-skill-plugin.ts',
-  )
+  return pathToFileURL(
+    join(
+      harnessRoot,
+      'packages/bug-platform/bug-platform-autofix/src/personal-skill-plugin.ts',
+    ),
+  ).href
 }
