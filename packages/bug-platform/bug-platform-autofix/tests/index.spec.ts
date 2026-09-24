@@ -35,6 +35,10 @@ describe('bug-platform-autofix plugin', () => {
     expect(typeof BugPlatformAutofix.parseEligibilityModelText).toBe('function')
     expect(typeof BugPlatformAutofix.inspectWorkspace).toBe('function')
     expect(typeof BugPlatformAutofix.inspectAutofixWorkspaces).toBe('function')
+    expect(typeof BugPlatformAutofix.loadLessonIndex).toBe('function')
+    expect(typeof BugPlatformAutofix.loadAcceptedLessonBodies).toBe('function')
+    expect(typeof BugPlatformAutofix.tryDraftLessonAfterDone).toBe('function')
+    expect(typeof BugPlatformAutofix.pullLessonsFf).toBe('function')
   })
 
   it('accepts fully defaulted Config in apply', () => {

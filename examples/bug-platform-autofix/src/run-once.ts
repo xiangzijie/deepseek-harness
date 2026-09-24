@@ -17,6 +17,7 @@ import {
   loadMenuMapping,
   loadOperatorConfig,
   loadState,
+  pullLessonsFf,
   runBatch,
   runLockPath,
   runOneTicket,
@@ -298,6 +299,29 @@ async function runWithLock(
   const visionModel = process.env['BUG_PLATFORM_VISION_MODEL']?.trim()
   const eligibilityModel = process.env['BUG_PLATFORM_ELIGIBILITY_MODEL']?.trim()
 
+  let lessonsForRun: OrchestratorConfig['lessons'] = undefined
+  if (cfg.lessons !== undefined) {
+    const pulled = await pullLessonsFf({
+      localRoot: cfg.lessons.local,
+      runGit: defaultRunGit,
+    })
+    if (pulled.ok) {
+      const lessonModel = process.env['BUG_PLATFORM_LESSON_MODEL']?.trim()
+      lessonsForRun = {
+        local: cfg.lessons.local,
+        injectMax: cfg.lessons.injectMax,
+        apiKey: deepseekApiKey,
+        runGit: defaultRunGit,
+        ...(deepseekBaseURL === undefined || deepseekBaseURL.length === 0
+          ? {}
+          : { baseURL: deepseekBaseURL }),
+        ...(lessonModel === undefined || lessonModel.length === 0 ? {} : { model: lessonModel }),
+      }
+    } else {
+      process.stdout.write(`经验仓同步失败，本轮不注入、不起草：${pulled.error}\n`)
+    }
+  }
+
   const mappingPath = cfg.mappingFile
   const statePath = cfg.stateFile
   const assetsDir = cfg.assetsDir
@@ -351,6 +375,7 @@ async function runWithLock(
         ? {}
         : { model: eligibilityModel }),
     },
+    ...(lessonsForRun === undefined ? {} : { lessons: lessonsForRun }),
     // Spawn harness `apps/cli` with product worktree as cwd — never `pnpm dsh` inside dkh-*.
     agentRunner: createDefaultAgentRunner({
       harnessRoot: cfg.harnessRoot,

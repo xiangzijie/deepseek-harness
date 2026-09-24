@@ -156,6 +156,38 @@ export {
   mediaTypeForPath,
 } from './vision-preflight.ts'
 
+export type { LessonIndex, LessonIndexRow, LessonStatus } from './lesson-index.ts'
+export {
+  indexHasTicket,
+  loadLessonIndex,
+  selectAcceptedForInject,
+  selectDedupRows,
+} from './lesson-index.ts'
+
+export type { AcceptedLessonBody, LoadAcceptedLessonBodiesOptions } from './lesson-inject.ts'
+export { loadAcceptedLessonBodies } from './lesson-inject.ts'
+
+export type { LessonSyncErr, LessonSyncOk, LessonSyncResult } from './lesson-sync.ts'
+export { commitAndPushLessons, lessonsWorkingTreeDirty, pullLessonsFf } from './lesson-sync.ts'
+
+export type {
+  ApplyLessonDedupActionInput,
+  AssessLessonDedupInput,
+  LessonDedupOptions,
+  LessonDedupParseResult,
+  LessonDraftAfterDoneInput,
+  LessonDraftAfterDoneResult,
+  ShouldSkipLessonDraftInput,
+  ShouldSkipLessonDraftResult,
+} from './lesson-draft.ts'
+export {
+  applyLessonDedupAction,
+  assessLessonDedup,
+  parseLessonDedupText,
+  shouldSkipLessonDraft,
+  tryDraftLessonAfterDone,
+} from './lesson-draft.ts'
+
 /** Cordis plugin name used by loader diagnostics. */
 export const name = 'bug-platform-autofix'
 
