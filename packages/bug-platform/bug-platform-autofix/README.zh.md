@@ -6,7 +6,7 @@
 
 ## 值班配置（`operator.yaml`）
 
-`loadOperatorConfig(configPath)` 读取并校验传入路径上的控制台／CLI `operator.yaml`（相对或绝对路径均可）。文件缺失或字段非法时立即抛出 `Error`（例如 `operator.yaml 不存在: …` 或 `operator-config: …` 校验信息）。每个工作区必须有自己的 `gitlabProjectId`；GitLab MR 创建／复用使用该 id。可选字段省略时使用默认值：`gitlab.tokenEnv` → `GITLAB_TOKEN`，`workspaces[].autofix` → `true`，`skills.forceMaxCount` → `3`，`skills.forceMaxChars` → `8000`，`run.maxTickets` → `1`，`run.operatorId` → `local`，`run.lintEnabled`／`run.buildEnabled` → `false`。整个 `lessons` 段可省略（不注入经验、不写草稿）；若存在则 `lessons.repo` 与 `lessons.local` 必填，`lessons.injectMax` 默认为 `3`。返回值提供 `workspaceByMappingRepo` 与 `workspaceById`。完整样例见 [examples/bug-platform-autofix/operator.example.yaml](../../../examples/bug-platform-autofix/operator.example.yaml)。
+`loadOperatorConfig(configPath)` 读取并校验传入路径上的控制台／CLI `operator.yaml`（相对或绝对路径均可）。文件缺失或字段非法时立即抛出 `Error`（例如 `operator.yaml 不存在: …` 或 `operator-config: …` 校验信息）。每个工作区必须有自己的 `gitlabProjectId`；GitLab MR 创建／复用使用该 id。可选字段省略时使用默认值：`gitlab.tokenEnv` → `GITLAB_TOKEN`，`workspaces[].autofix` → `true`，`skills.forceMaxCount` → `3`，`skills.forceMaxChars` → `8000`，`run.maxTickets` → `1`，`run.operatorId` → `local`，`run.lintEnabled`／`run.buildEnabled` → `false`。整个 `lessons` 段可省略（不注入经验、不写草稿）；若存在则 `lessons.repo` 与 `lessons.local` 必填，`lessons.injectMax` 默认为 `3`。`run-once` 在跑批开始时对 `lessons.local` 执行快进 `git pull --ff-only`，随后把已入库正文注入 brief，并在 `done` 且有 MR URL 后 fail-open 起草；pull 失败则本轮不注入、不起草，修单继续。返回值提供 `workspaceByMappingRepo` 与 `workspaceById`。完整样例见 [examples/bug-platform-autofix/operator.example.yaml](../../../examples/bug-platform-autofix/operator.example.yaml)。
 
 ## 个人 skill 上传
 

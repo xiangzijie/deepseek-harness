@@ -13,13 +13,13 @@ Status: implemented
 在 `packages/bug-platform/` 下交付**混合双包、库优先**布局：
 
 - `@deepseek-ai/dsh-bug-platform-http` 负责登录、列表／详情、followup 与鉴权下载。调用方用已解析凭据构造 `BugPlatformClient`；Cordis `apply` 只校验 Config，不注册 `ctx.bugPlatform`。
-- `@deepseek-ai/dsh-bug-platform-autofix` 负责菜单映射、选单、本地幂等状态、按工作区隔离的 Git 辅助、`inspectWorkspace`／`inspectAutofixWorkspaces` 健康检查、GitLab ensure MR 与 note、`runOneTicket`／`runBatch` 编排，以及把强制全局 skill 写入 agent brief。Cordis `apply` 仍为 Config 桩；`examples/bug-platform-autofix/run-once` 直接导入辅助函数。
+- `@deepseek-ai/dsh-bug-platform-autofix` 负责菜单映射、选单、本地幂等状态、按工作区隔离的 Git 辅助、`inspectWorkspace`／`inspectAutofixWorkspaces` 健康检查、GitLab ensure MR 与 note、`runOneTicket`／`runBatch` 编排、把强制全局 skill 写入 agent brief、注入已入库经验，以及在 `done` 且有 MR 后 fail-open 起草经验。Cordis `apply` 仍为 Config 桩；`examples/bug-platform-autofix/run-once` 直接导入辅助函数。
 
-完整的 Service Definition／Provider／Consumer seam 与可安装 bundle 仍推迟。一期合入策略为**自动修 + 人工合**；高确信度自动合仍推迟且须记录判定依据。经验沉淀仍推迟。
+完整的 Service Definition／Provider／Consumer seam 与可安装 bundle 仍推迟。一期合入策略为**自动修 + 人工合**；高确信度自动合仍推迟且须记录判定依据。
 
 ### 配置权威
 
-`operator.yaml` 是工作区路径、GitLab host 与各工作区 `gitlabProjectId`、映射／状态／进度／附件路径、skill 根目录与跑批可选项的配置权威。`run-once` 与 `reset-to-pending` 要求 `--config` 或 `BUG_PLATFORM_OPERATOR_FILE`，缺文件则失败。密钥只来自环境变量／`.env`。试点绝对路径只出现在 `operator.example.yaml`，不是 TypeScript 默认常量。
+`operator.yaml` 是工作区路径、GitLab host 与各工作区 `gitlabProjectId`、映射／状态／进度／附件路径、skill 根目录、经验仓 clone 与跑批可选项的配置权威。`run-once` 与 `reset-to-pending` 要求 `--config` 或 `BUG_PLATFORM_OPERATOR_FILE`，缺文件则失败。密钥只来自环境变量／`.env`。试点绝对路径只出现在 `operator.example.yaml`，不是 TypeScript 默认常量。
 
 操作控制台是独立 git 仓：不是 harness 包，也不是 `dsh web` bundle。CLI 与控制台读同一份 `operator.yaml`。
 
@@ -28,6 +28,12 @@ Status: implemented
 Headless 看到三层，个人 > 仓内 > 全局：`join(personalRoot, operatorId)` 经 rank=50 的 `autofix-personal` 提供方，`<localRoot>/.agents/skills` 与 `<localRoot>/.dsh/skills`（skill-filesystem rank 100/200），以及 `globalLocal/skills` 经 `customSkillDirs`（rank 300）。同名 catalog／工具发现按该顺序。即使更高层覆盖了 catalog 名，强制全局正文仍注入 brief。
 
 全局 clone 是 GitLab `jgts/autofix-skills`，独立于产品仓。值班机 clone 到 `skills.globalLocal`。保护 `main`；`force: true` 的变更经该 skill 仓的 MR 合入。创建远程时拷贝 [`examples/bug-platform-autofix/skill-repo-template/`](../../../../examples/bug-platform-autofix/skill-repo-template/README.md)。
+
+### 经验仓 git
+
+已入库经验存放在 GitLab `jgts/autofix-lessons`，独立于 `jgts/autofix-skills` 与产品仓。值班机 clone 到 `lessons.local`。当 `operator.yaml` 含 `lessons` 时，`lessons.repo` 与 `lessons.local` 必填，`lessons.injectMax` 缺省 `3`。`main` 允许 Maintainer 直推；确认不以 MR 为闸门。创建远程时拷贝 [`examples/bug-platform-autofix/lesson-repo-template/`](../../../../examples/bug-platform-autofix/lesson-repo-template/README.md)。
+
+查询只走 `index.yaml`。注入用 `loadAcceptedLessonBodies` 按精确 `target_menu` 命中，且只读 `accepted/<id>.md`。`runOneTicket` 返回 `kind === 'done'` 且有 MR URL 后，`tryDraftLessonAfterDone` 以 fail-open 起草：起草或 push 失败时工单仍为 `done`。待确认草稿的人工确认属于控制台，不在本仓库。机制见 [经验库规格](../../../../docs/superpowers/specs/2026-09-23-bug-platform-autofix-lessons-design.md)。
 
 ### 工作区与映射
 
@@ -85,6 +91,8 @@ Headless 看到三层，个人 > 仓内 > 全局：`join(personalRoot, operatorI
 
 **把全局 skill 放进产品工作区。** 否决：产品 jinan 与强制策略各有远程与保护分支，混放会把无关 MR 绑在一起。skill clone 是 `jgts/autofix-skills`。
 
+**把经验写进 skill clone 或 `SKILL.md`。** 否决：列表与注入只查询 `index.yaml`；确认在控制台，仓的 `main` 允许 Maintainer 直推；与 `jgts/autofix-skills` 混放文件会把受保护的强制策略 MR 绑到经验草稿上。
+
 ## 后果
 
-操作员凭 `operator.yaml` 开跑（一次性、`--poll-interval` 或 `--continuous`）；强制全局 skill 注入 agent brief；控制台不在本仓库。该路径已能开出真实 GitLab MR 并回写平台 followup；代价是并发、完整 seam、session 记录的 brief 与经验沉淀仍推迟。共享同一 `progressFile` 的两个 `run-once` 进程不能重叠：第二个存活 pid 在领单前失败。默认跳过 lint／build 可能推送损坏 diff，需操作员开启按路径 lint。再次修单会更新平台与 MR 记录，但错误产品合入仍须人审后再进 jinan。
+操作员凭 `operator.yaml` 开跑（一次性、`--poll-interval` 或 `--continuous`）；强制全局 skill 注入 agent brief；已入库经验按精确 `target_menu` 注入；控制台不在本仓库。该路径已能开出真实 GitLab MR 并回写平台 followup；代价是并发、完整 seam 与 session 记录的 brief 仍推迟。共享同一 `progressFile` 的两个 `run-once` 进程不能重叠：第二个存活 pid 在领单前失败。默认跳过 lint／build 可能推送损坏 diff，需操作员开启按路径 lint。再次修单会更新平台与 MR 记录，但错误产品合入仍须人审后再进 jinan。

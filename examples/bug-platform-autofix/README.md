@@ -19,6 +19,8 @@
 
 全局 skill 仓模板见 [`skill-repo-template/`](./skill-repo-template/README.md)：在 GitLab 建独立项目 `jgts/autofix-skills`，值班机 clone 到 yaml `skills.globalLocal`；保护 `main`，强制变更走 MR。
 
+经验库模板见 [`lesson-repo-template/`](./lesson-repo-template/README.md)：在 GitLab 建独立项目 `jgts/autofix-lessons`（不要与 skill 仓混放文件），值班机 clone 到 yaml `lessons.local`；`lessons.repo` 指向该远程，`lessons.injectMax` 缺省 `3`。`main` 允许 Maintainer 直推。查询只走 `index.yaml`；`pending/` 是待确认草稿，`accepted/` 是已入库正文。跑批开始时对 `lessons.local` 执行 `git pull --ff-only`；pull 失败则本轮不注入、不起草，修单继续。机制见 [经验库规格](../../docs/superpowers/specs/2026-09-23-bug-platform-autofix-lessons-design.md)。
+
 ## 环境变量
 
 脚本启动时会**优先**加载 harness 根目录的 `.env`（覆盖同名进程环境变量）；文件缺失时再退回 ambient env。
@@ -34,11 +36,12 @@ Copy-Item .env.example .env
 |------|------|------|
 | `BUG_PLATFORM_USERNAME` | 是 | Bug 平台登录用户名 |
 | `BUG_PLATFORM_PASSWORD` | 是 | Bug 平台登录密码 |
-| `DEEPSEEK_API_KEY` | 是 | headless agent 与领单前资格判断调模型（`reset-to-pending` 不需要） |
+| `DEEPSEEK_API_KEY` | 是 | headless agent、领单前资格判断与修单成功后经验去重调模型（`reset-to-pending` 不需要） |
 | `BUG_PLATFORM_OPERATOR_FILE` | 否 | `operator.yaml` 路径；`--config` 优先于本变量 |
 | `BUG_PLATFORM_BASE_URL` | 否 | 覆盖 yaml `bugPlatform.baseUrl` |
 | `GITLAB_TOKEN` | 否 | GitLab `PRIVATE-TOKEN`（或 yaml `gitlab.tokenEnv` 所指变量）；无 Token 时仍可本地 commit，但不会开 MR |
 | `BUG_PLATFORM_ELIGIBILITY_MODEL` | 否 | 领单前「是否改前端」文本判断所用模型；默认 `deepseek-chat` |
+| `BUG_PLATFORM_LESSON_MODEL` | 否 | 修单成功后经验去重所用文本模型；默认 `deepseek-chat` |
 
 映射、状态、进度、附件路径只认 yaml 的 `mappingFile` / `stateFile` / `progressFile` / `assetsDir`，不提供同名 env 覆盖。
 

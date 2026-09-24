@@ -13,13 +13,13 @@ An internal bug platform holds unassigned frontend tickets that can be fixed in 
 Ship a **hybrid two-package, library-first** layout under `packages/bug-platform/`:
 
 - `@deepseek-ai/dsh-bug-platform-http` owns login, list/get, followup, and authenticated download. Callers construct `BugPlatformClient` from resolved credentials; Cordis `apply` validates Config only and does not register `ctx.bugPlatform`.
-- `@deepseek-ai/dsh-bug-platform-autofix` owns menu mapping, ticket selection, local idempotency state, per-worktree Git helpers, `inspectWorkspace` / `inspectAutofixWorkspaces` health checks, GitLab ensure-MR plus notes, `runOneTicket` / `runBatch` orchestration, and forced global skill injection into the agent brief. Cordis `apply` stays a Config stub; `examples/bug-platform-autofix/run-once` imports helpers directly.
+- `@deepseek-ai/dsh-bug-platform-autofix` owns menu mapping, ticket selection, local idempotency state, per-worktree Git helpers, `inspectWorkspace` / `inspectAutofixWorkspaces` health checks, GitLab ensure-MR plus notes, `runOneTicket` / `runBatch` orchestration, forced global skill injection into the agent brief, accepted-lesson inject, and fail-open lesson draft after `done` plus an MR. Cordis `apply` stays a Config stub; `examples/bug-platform-autofix/run-once` imports helpers directly.
 
-A full Service Definition / Provider / Consumer seam and installable bundle remain deferred. Phase-1 merge policy is **auto-fix + human merge**; high-confidence auto-merge remains deferred and must record its judgment basis. Experience capture remains deferred.
+A full Service Definition / Provider / Consumer seam and installable bundle remain deferred. Phase-1 merge policy is **auto-fix + human merge**; high-confidence auto-merge remains deferred and must record its judgment basis.
 
 ### Configuration authority
 
-`operator.yaml` is the configuration authority for workspace paths, GitLab host and per-workspace `gitlabProjectId`, mapping / state / progress / assets paths, skill roots, and run tunables. `run-once` and `reset-to-pending` require `--config` or `BUG_PLATFORM_OPERATOR_FILE` and fail when the file is missing. Secrets stay in environment variables / `.env`. Pilot absolute paths live only in `operator.example.yaml`, not as TypeScript defaults.
+`operator.yaml` is the configuration authority for workspace paths, GitLab host and per-workspace `gitlabProjectId`, mapping / state / progress / assets paths, skill roots, lesson clone, and run tunables. `run-once` and `reset-to-pending` require `--config` or `BUG_PLATFORM_OPERATOR_FILE` and fail when the file is missing. Secrets stay in environment variables / `.env`. Pilot absolute paths live only in `operator.example.yaml`, not as TypeScript defaults.
 
 The operator console is a separate git repository: it is not a harness package and not a `dsh web` bundle. CLI and console read the same `operator.yaml`.
 
@@ -28,6 +28,12 @@ The operator console is a separate git repository: it is not a harness package a
 Headless sees three layers, personal > in-repo > global: `join(personalRoot, operatorId)` via the rank-50 `autofix-personal` provider, `<localRoot>/.agents/skills` and `<localRoot>/.dsh/skills` (skill-filesystem ranks 100/200), and `globalLocal/skills` via `customSkillDirs` (rank 300). Same-name catalog/tool discovery follows that order. Forced global bodies still inject into the brief even when a higher layer overrides the catalog name.
 
 The global clone is GitLab `jgts/autofix-skills`, independent of product repos. Duty machines clone it to `skills.globalLocal`. Protect `main`; `force: true` changes land through that skill repo's MR. Copy [`examples/bug-platform-autofix/skill-repo-template/`](../../../../examples/bug-platform-autofix/skill-repo-template/README.md) to create the remote.
+
+### Lessons git
+
+Accepted lessons live in GitLab `jgts/autofix-lessons`, independent of `jgts/autofix-skills` and of product repos. Duty machines clone it to `lessons.local`. When `operator.yaml` includes `lessons`, `lessons.repo` and `lessons.local` are required and `lessons.injectMax` defaults to `3`. `main` allows Maintainer push; confirmation is not an MR gate. Copy [`examples/bug-platform-autofix/lesson-repo-template/`](../../../../examples/bug-platform-autofix/lesson-repo-template/README.md) to create the remote.
+
+Query only `index.yaml`. Inject uses `loadAcceptedLessonBodies` for exact `target_menu` hits and reads only `accepted/<id>.md`. After `runOneTicket` returns `kind === 'done'` with an MR URL, `tryDraftLessonAfterDone` fail-opens: a draft or push failure leaves the ticket `done`. Human confirmation of pending drafts is console-owned and is not in this repository. The mechanism is [the lessons spec](../../../../docs/superpowers/specs/2026-09-23-bug-platform-autofix-lessons-design.md).
 
 ### Worktrees and mapping
 
@@ -85,6 +91,8 @@ When autofix later runs inside a session-backed agent, the agent brief is model-
 
 **Keep global skills inside a product worktree.** Rejected because product jinan and force-policy have independent remotes and protected branches; mixing them couples unrelated MRs. The skill clone is `jgts/autofix-skills`.
 
+**Store lessons in the skill clone or in `SKILL.md`.** Rejected because listing and inject query `index.yaml` only, confirmation is console-owned with Maintainer push on `main`, and mixing files with `jgts/autofix-skills` would couple protected force-policy MRs to lesson drafts.
+
 ## Consequences
 
-Operators run from `operator.yaml` (one-shot, `--poll-interval`, or `--continuous`); forced global skills inject into the agent brief; the console is not in this repository. The path has opened real GitLab MRs and written platform followups, at the cost of deferred concurrency, full seam packaging, session-logged briefs, and experience capture. Two `run-once` processes that share a `progressFile` cannot overlap: the second live pid fails before claim. Skipping lint/build can push broken diffs until operators enable path-scoped lint. Re-fix updates platform and MR records, but wrong product merges still require human review before landing on jinan.
+Operators run from `operator.yaml` (one-shot, `--poll-interval`, or `--continuous`); forced global skills inject into the agent brief; accepted lessons inject by exact `target_menu`; the console is not in this repository. The path has opened real GitLab MRs and written platform followups, at the cost of deferred concurrency, full seam packaging, and session-logged briefs. Two `run-once` processes that share a `progressFile` cannot overlap: the second live pid fails before claim. Skipping lint/build can push broken diffs until operators enable path-scoped lint. Re-fix updates platform and MR records, but wrong product merges still require human review before landing on jinan.
