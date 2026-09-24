@@ -281,7 +281,7 @@ M0 的行为以本文 §1–8 为准。M1 及之后的控制台、skill、review
 | **M3 质量与远程仓** | 待实现 | MR 只读 review；工作区 `mode: clone` |
 | **M4 在线多人** | 待实现 | 账号、`operatorId`、内网部署；每产品线一个守护进程 |
 | **M5 运行时收口** | 待实现 | 控制台进程内调用 autofix 库。业务控制台不做进 `dsh web` / bundle |
-| **M6 经验库** | 待实现 | 按菜单沉淀「这类单通常怎么改」；机制见 [经验库规格](./2026-09-23-bug-platform-autofix-lessons-design.md) |
+| **M6 经验库** | 已实现（feature 分支） | 按菜单沉淀「这类单通常怎么改」；机制见 [经验库规格](./2026-09-23-bug-platform-autofix-lessons-design.md) |
 
 **默认不做：** 自动转派后端、从描述推断菜单、默认自动合入 MR、修改 `dkh-home`、截图视觉回归门禁。高确信度自动合仅 §3.11。`home` 仅当映射显式纳入且 `autofix: true` 时才改。
 
