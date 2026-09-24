@@ -37,6 +37,10 @@ import {
 import { loadLessonIndex } from './lesson-index.ts'
 import { loadAcceptedLessonBodies } from './lesson-inject.ts'
 import {
+  tryDraftLessonAfterDone,
+  type LessonDraftAfterDoneInput,
+} from './lesson-draft.ts'
+import {
   resolveForcedSkills,
   type ForcedSkill,
 } from './skill-manifest.ts'
@@ -159,15 +163,31 @@ export interface OrchestratorConfig {
     forceMaxChars: number
   }
   /**
-   * Lessons clone used to inject accepted bodies into the agent brief.
-   * When omitted, the brief has no lessons section. Inject load failures
-   * omit the section and do not skip claim.
+   * Lessons clone used to inject accepted bodies into the agent brief and
+   * (after `kind === 'done'`) fail-open draft a pending lesson.
+   * When omitted, the brief has no lessons section and no draft runs.
+   * Inject load failures omit the section and do not skip claim.
+   * Draft failures never change a successful ticket outcome.
    */
   lessons?: {
     /** Local clone root containing `index.yaml` and `accepted/`. */
     local: string
     /** Maximum accepted bodies to inject for this ticket's menu. */
     injectMax: number
+    /** DeepSeek API key for post-done lesson dedup. */
+    apiKey?: string
+    /** Dedup API root; defaults inside {@link tryDraftLessonAfterDone}. */
+    baseURL?: string
+    /** Dedup model id; defaults inside {@link tryDraftLessonAfterDone}. */
+    model?: string
+    /** Git runner for the lessons clone; defaults to {@link OrchestratorConfig.runGit}. */
+    runGit?: RunGit
+    /**
+     * Test hook. Production calls {@link tryDraftLessonAfterDone}.
+     * @param input - ticket, MR, and lessons-clone fields after a successful fix.
+     * @returns draft attempt result; throw or `{ ok: false }` still leaves the ticket `done`.
+     */
+    draft?: (input: LessonDraftAfterDoneInput) => Promise<{ ok: boolean; error?: string }>
   }
   /** When true (default), write an optional skip followup for unmapped/home. */
   writeSkipFollowup?: boolean
@@ -397,7 +417,7 @@ export async function runOneTicket(
       lessonBodies = loadAcceptedLessonBodies({
         localRoot: config.lessons.local,
         index,
-        targetMenu: targetMenu,
+        targetMenu: resolved.targetMenu,
         injectMax: config.lessons.injectMax,
       })
     } catch {
@@ -519,6 +539,27 @@ export async function runOneTicket(
       branch: branchName,
       mrUrl: mr.webUrl,
     })
+    if (config.lessons !== undefined) {
+      const draft = config.lessons.draft ?? tryDraftLessonAfterDone
+      try {
+        await draft({
+          localRoot: config.lessons.local,
+          ticketId: detail.id,
+          targetMenu: resolved.targetMenu,
+          mrUrl: mr.webUrl,
+          changedFiles: changed,
+          agentSummary: agentResult.summary,
+          ticketDescription: detail.description,
+          runGit: config.lessons.runGit ?? config.runGit,
+          apiKey: config.lessons.apiKey ?? '',
+          baseURL: config.lessons.baseURL,
+          model: config.lessons.model,
+        })
+      } catch (error) {
+        // Lesson draft failed: keep ticket outcome done; do not fail the MR.
+        void errorMessage(error)
+      }
+    }
     return { kind: 'done', mrUrl: mr.webUrl }
   } catch (error) {
     // Local commit exists: keep 处理中 / awaiting_push for any push or MR failure

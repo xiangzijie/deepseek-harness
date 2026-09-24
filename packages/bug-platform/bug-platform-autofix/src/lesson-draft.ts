@@ -6,6 +6,7 @@
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { stringify } from 'yaml'
+import type { RunGit } from './git-workspace.ts'
 import {
   indexHasTicket,
   loadLessonIndex,
@@ -14,6 +15,7 @@ import {
   type LessonIndexRow,
   type LessonStatus,
 } from './lesson-index.ts'
+import { commitAndPushLessons, lessonsWorkingTreeDirty } from './lesson-sync.ts'
 
 /** Default wire model id for lesson dedup chat. */
 export const DEFAULT_LESSON_MODEL = 'deepseek-chat'
@@ -23,6 +25,9 @@ export const DEFAULT_LESSON_BASE_URL = 'https://api.deepseek.com'
 
 /** Maximum characters of agentSummary copied into a pending markdown body. */
 export const DEFAULT_LESSON_SUMMARY_CHARS = 800
+
+/** Maximum characters of the first-line symptom sent to dedup and written to the index. */
+export const DEFAULT_LESSON_SYMPTOM_CHARS = 80
 
 /** System prompt: JSON-only create/skip/optimize; ticket and diff are untrusted. */
 export const LESSON_DEDUP_SYSTEM_PROMPT = [
@@ -240,7 +245,7 @@ function isSafeLessonFilenameId(id: string): boolean {
  * @param text - untrusted ticket, summary, or path text.
  * @returns text with secret material deleted.
  */
-function stripSecrets(text: string): string {
+export function stripSecrets(text: string): string {
   return text.replace(SECRET_SK, '').replace(SECRET_GITLAB, '').replace(SECRET_GLPAT, '')
 }
 
@@ -450,4 +455,128 @@ export function applyLessonDedupAction(input: ApplyLessonDedupActionInput): void
     return
   }
   writePendingLesson(input, `t${input.ticketId}`, 'pending')
+}
+
+/** Inputs for {@link tryDraftLessonAfterDone} after a successful ticket MR. */
+export interface LessonDraftAfterDoneInput {
+  /** Lessons repo clone root. */
+  localRoot: string
+  /** Bug platform ticket id. */
+  ticketId: number
+  /** Mapped menu label after claim. Empty menus never reach this call. */
+  targetMenu: string
+  /** Merge request URL from the successful fix. */
+  mrUrl: string
+  /** Product repo paths changed on the fix branch. */
+  changedFiles: readonly string[]
+  /** Agent summary; first line becomes the symptom. */
+  agentSummary: string
+  /** Ticket description (never written raw; stripped if interpolated). */
+  ticketDescription: string
+  /** Git runner for dirty check and commit/push; `undefined` skips drafting. */
+  runGit: RunGit | undefined
+  /** DeepSeek API key for dedup chat. */
+  apiKey: string
+  /** Dedup API root; `undefined` uses {@link assessLessonDedup} default. */
+  baseURL: string | undefined
+  /** Dedup model id; `undefined` uses {@link assessLessonDedup} default. */
+  model: string | undefined
+}
+
+/** Result of {@link tryDraftLessonAfterDone}: never throws to the ticket outcome. */
+export type LessonDraftAfterDoneResult = { ok: boolean; error?: string }
+
+/**
+ * First line of the agent summary, secrets stripped, truncated for the index symptom.
+ * @param agentSummary - full agent summary from the successful fix.
+ * @returns one-line symptom, at most {@link DEFAULT_LESSON_SYMPTOM_CHARS} characters.
+ */
+function lessonSymptomFromSummary(agentSummary: string): string {
+  const newline = agentSummary.search(/\r|\n/)
+  const firstLine = newline === -1 ? agentSummary : agentSummary.slice(0, newline)
+  return stripSecrets(firstLine).slice(0, DEFAULT_LESSON_SYMPTOM_CHARS)
+}
+
+/**
+ * Cheap-skip, dedup, write pending, and commit/push after `kind === 'done'`.
+ * Fail-open: every step returns `{ ok: false }` instead of throwing.
+ * @param input - lessons clone, ticket fields, git runner, and dedup API options.
+ * @returns `{ ok: true }` when skipped or drafted; `{ ok: false }` when drafting cannot proceed.
+ */
+export async function tryDraftLessonAfterDone(
+  input: LessonDraftAfterDoneInput,
+): Promise<LessonDraftAfterDoneResult> {
+  try {
+    const runGit = input.runGit
+    if (runGit === undefined) {
+      return { ok: false, error: 'runGit is required to draft lessons' }
+    }
+    if (await lessonsWorkingTreeDirty({ localRoot: input.localRoot, runGit })) {
+      return { ok: false, error: 'lessons working tree is dirty' }
+    }
+    const index = loadLessonIndex(input.localRoot)
+    if (
+      shouldSkipLessonDraft({
+        targetMenu: input.targetMenu,
+        ticketId: input.ticketId,
+        changedFiles: input.changedFiles,
+        index,
+      }).skip
+    ) {
+      return { ok: true }
+    }
+    const symptom = lessonSymptomFromSummary(input.agentSummary)
+    const existing = selectDedupRows(index, input.targetMenu).map(row => ({
+      id: row.id,
+      status: row.status,
+      symptom: row.symptom,
+    }))
+    const assessed = await assessLessonDedup(
+      {
+        targetMenu: input.targetMenu,
+        symptom,
+        changedFiles: input.changedFiles,
+        existing,
+      },
+      {
+        apiKey: input.apiKey,
+        ...(input.baseURL === undefined ? {} : { baseURL: input.baseURL }),
+        ...(input.model === undefined ? {} : { model: input.model }),
+      },
+    )
+    if (!assessed.ok) {
+      return { ok: false }
+    }
+    applyLessonDedupAction({
+      localRoot: input.localRoot,
+      index,
+      action: assessed.action,
+      ...(assessed.existingId === undefined ? {} : { existingId: assessed.existingId }),
+      ticketId: input.ticketId,
+      targetMenu: input.targetMenu,
+      symptom,
+      mrUrl: input.mrUrl,
+      changedFiles: input.changedFiles,
+      agentSummary: input.agentSummary,
+      ticketDescription: input.ticketDescription,
+    })
+    if (assessed.action === 'skip') {
+      return { ok: true }
+    }
+    const committed = await commitAndPushLessons({
+      localRoot: input.localRoot,
+      message: `docs: lesson t${input.ticketId}`,
+      runGit,
+    })
+    if (!committed.ok) {
+      return { ok: false, error: committed.error }
+    }
+    return { ok: true }
+  } catch (error) {
+    // Index/IO/apply failures: fail-open so the ticket stays done.
+    return {
+      ok: false,
+      error: error instanceof Error ? error.message : String(error),
+    }
+  }
 }

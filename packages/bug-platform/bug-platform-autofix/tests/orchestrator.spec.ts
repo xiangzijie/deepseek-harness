@@ -998,6 +998,253 @@ skills:
       expect(followups.some(f => f.body.status_change === '处理中')).toBe(true)
     }
   })
+
+  it('does not draft lessons when config.lessons is omitted', async () => {
+    const ticket = detail({ id: 428, target_menu: '资产核查' })
+    const { client } = fakeClient({})
+    const agentRunner: AgentRunner = async () => ({ ok: true, summary: 'fixed' })
+    let porcelainCalls = 0
+    const gitCwds: string[] = []
+    const inner = cleanCustomGit({
+      'status --porcelain': () => {
+        porcelainCalls += 1
+        return porcelainCalls === 1 ? '' : ' M src/views/assetVerification/index.vue\n'
+      },
+    })
+    const runGit: RunGit = async (cwd, args) => {
+      gitCwds.push(cwd)
+      return inner(cwd, args)
+    }
+    const ensureMr = vi.fn(async () => ({
+      webUrl: 'http://gitlab.example.com/mr/1',
+      iid: 1,
+      created: true,
+    }))
+    const addMrNote = vi.fn(async () => undefined)
+    const draft = vi.fn(async () => ({ ok: true }))
+
+    const outcome = await runOneTicket(
+      baseConfig({ client, agentRunner, runGit, ensureMr, addMrNote }),
+      ticket,
+    )
+
+    expect(outcome).toEqual({ kind: 'done', mrUrl: 'http://gitlab.example.com/mr/1' })
+    expect(draft).not.toHaveBeenCalled()
+    expect(gitCwds.every(cwd => cwd === CUSTOM_ROOT)).toBe(true)
+  })
+
+  it('calls lessons.draft once after done with ticket id, MR url, and changed files', async () => {
+    const lessonsDir = mkdtempSync(join(tmpdir(), 'orch-lessons-'))
+    writeFileSync(join(lessonsDir, 'index.yaml'), 'lessons: []\n')
+    const ticket = detail({ id: 428, target_menu: '资产核查' })
+    const { client } = fakeClient({})
+    const agentRunner: AgentRunner = async () => ({ ok: true, summary: 'fixed' })
+    let porcelainCalls = 0
+    const runGit = cleanCustomGit({
+      'status --porcelain': () => {
+        porcelainCalls += 1
+        return porcelainCalls === 1 ? '' : ' M src/views/assetVerification/index.vue\n'
+      },
+    })
+    const ensureMr = vi.fn(async () => ({
+      webUrl: 'http://gitlab.example.com/mr/1',
+      iid: 1,
+      created: true,
+    }))
+    const addMrNote = vi.fn(async () => undefined)
+    const draft = vi.fn(async () => ({ ok: true }))
+
+    const outcome = await runOneTicket(
+      baseConfig({
+        client,
+        agentRunner,
+        runGit,
+        ensureMr,
+        addMrNote,
+        lessons: {
+          local: lessonsDir,
+          injectMax: 3,
+          apiKey: 'sk-test',
+          baseURL: 'https://api.example.test',
+          model: 'deepseek-chat',
+          draft,
+        },
+      }),
+      ticket,
+    )
+
+    expect(outcome).toEqual({ kind: 'done', mrUrl: 'http://gitlab.example.com/mr/1' })
+    expect(draft).toHaveBeenCalledTimes(1)
+    expect(draft).toHaveBeenCalledWith(
+      expect.objectContaining({
+        localRoot: lessonsDir,
+        ticketId: 428,
+        targetMenu: '资产核查',
+        mrUrl: 'http://gitlab.example.com/mr/1',
+        changedFiles: ['src/views/assetVerification/index.vue'],
+        agentSummary: 'fixed',
+        ticketDescription: '复现步骤：打开资产核查',
+        runGit,
+        apiKey: 'sk-test',
+        baseURL: 'https://api.example.test',
+        model: 'deepseek-chat',
+      }),
+    )
+  })
+
+  it('keeps kind done when lesson draft throws or returns ok false', async () => {
+    const ticket = detail({ id: 428, target_menu: '资产核查' })
+    const drafts = [
+      async () => {
+        throw new Error('draft boom')
+      },
+      async () => {
+        throw 'draft string'
+      },
+      async () => ({ ok: false as const, error: 'nope' }),
+    ]
+    for (const draft of drafts) {
+      const lessonsDir = mkdtempSync(join(tmpdir(), 'orch-lessons-fail-'))
+      writeFileSync(join(lessonsDir, 'index.yaml'), 'lessons: []\n')
+      const { client } = fakeClient({})
+      const agentRunner: AgentRunner = async () => ({ ok: true, summary: 'fixed' })
+      let porcelainCalls = 0
+      const runGit = cleanCustomGit({
+        'status --porcelain': () => {
+          porcelainCalls += 1
+          return porcelainCalls === 1 ? '' : ' M src/views/assetVerification/index.vue\n'
+        },
+      })
+      const ensureMr = vi.fn(async () => ({
+        webUrl: 'http://gitlab.example.com/mr/1',
+        iid: 1,
+        created: true,
+      }))
+      const addMrNote = vi.fn(async () => undefined)
+
+      const draftSpy = vi.fn(draft)
+      const outcome = await runOneTicket(
+        baseConfig({
+          client,
+          agentRunner,
+          runGit,
+          ensureMr,
+          addMrNote,
+          lessons: { local: lessonsDir, injectMax: 3, draft: draftSpy },
+        }),
+        ticket,
+      )
+
+      expect(draftSpy).toHaveBeenCalledTimes(1)
+      expect(outcome).toEqual({ kind: 'done', mrUrl: 'http://gitlab.example.com/mr/1' })
+    }
+  })
+
+  it('does not draft lessons when the ticket is skipped', async () => {
+    const lessonsDir = mkdtempSync(join(tmpdir(), 'orch-lessons-skip-'))
+    writeFileSync(join(lessonsDir, 'index.yaml'), 'lessons: []\n')
+    const ticket = detail({ id: 99, target_menu: '不存在的菜单' })
+    const { client } = fakeClient({})
+    const agentRunner = vi.fn(async () => ({ ok: true, summary: 'nope' }))
+    const draft = vi.fn(async () => ({ ok: true }))
+
+    const outcome = await runOneTicket(
+      baseConfig({
+        client,
+        agentRunner,
+        lessons: { local: lessonsDir, injectMax: 3, draft },
+      }),
+      ticket,
+    )
+
+    expect(outcome.kind).toBe('skipped')
+    expect(draft).not.toHaveBeenCalled()
+  })
+
+  it('does not draft lessons when the ticket is awaiting_push', async () => {
+    const lessonsDir = mkdtempSync(join(tmpdir(), 'orch-lessons-await-'))
+    writeFileSync(join(lessonsDir, 'index.yaml'), 'lessons: []\n')
+    const ticket = detail({ id: 428, target_menu: '资产核查' })
+    const { client } = fakeClient({})
+    const agentRunner: AgentRunner = async () => ({ ok: true, summary: 'fixed' })
+    let porcelainCalls = 0
+    const runGit = cleanCustomGit({
+      'status --porcelain': () => {
+        porcelainCalls += 1
+        return porcelainCalls === 1 ? '' : ' M src/views/assetVerification/index.vue\n'
+      },
+      'rev-parse HEAD': 'commitsha1\n',
+      'push -u origin bugfix/428': () => {
+        throw new Error('push denied')
+      },
+    })
+    const ensureMr = vi.fn()
+    const draft = vi.fn(async () => ({ ok: true }))
+    const store = new TicketStateStore()
+
+    const outcome = await runOneTicket(
+      baseConfig({
+        client,
+        agentRunner,
+        runGit,
+        ensureMr,
+        stateStore: store,
+        lessons: { local: lessonsDir, injectMax: 3, draft },
+      }),
+      ticket,
+    )
+
+    expect(outcome).toMatchObject({ kind: 'awaiting_push', branch: 'bugfix/428' })
+    expect(draft).not.toHaveBeenCalled()
+  })
+
+  it('still returns done when lessons.draft is omitted and the default drafter skips', async () => {
+    const lessonsDir = mkdtempSync(join(tmpdir(), 'orch-lessons-default-'))
+    writeFileSync(
+      join(lessonsDir, 'index.yaml'),
+      `lessons:
+  - { id: t428, status: pending, target_menu: '资产核查', symptom: x, ticketId: 428, mrUrl: u, updatedAt: '2026-01-01T00:00:00.000Z' }
+`,
+    )
+    const ticket = detail({ id: 428, target_menu: '资产核查' })
+    const { client } = fakeClient({})
+    const agentRunner: AgentRunner = async () => ({ ok: true, summary: 'fixed' })
+    let porcelainCalls = 0
+    const runGit = cleanCustomGit({
+      'status --porcelain': () => {
+        porcelainCalls += 1
+        return porcelainCalls === 1 ? '' : ' M src/views/assetVerification/index.vue\n'
+      },
+    })
+    const lessonGitCalls: string[][] = []
+    const lessonsRunGit: RunGit = async (_cwd, args) => {
+      lessonGitCalls.push([...args])
+      if (args[0] === 'status' && args[1] === '--porcelain') return ''
+      throw new Error(`unexpected lessons git ${args.join(' ')}`)
+    }
+    const ensureMr = vi.fn(async () => ({
+      webUrl: 'http://gitlab.example.com/mr/1',
+      iid: 1,
+      created: true,
+    }))
+    const addMrNote = vi.fn(async () => undefined)
+
+    const outcome = await runOneTicket(
+      baseConfig({
+        client,
+        agentRunner,
+        runGit,
+        ensureMr,
+        addMrNote,
+        lessons: { local: lessonsDir, injectMax: 3, runGit: lessonsRunGit },
+      }),
+      ticket,
+    )
+
+    expect(outcome).toEqual({ kind: 'done', mrUrl: 'http://gitlab.example.com/mr/1' })
+    expect(lessonGitCalls.some(args => args[0] === 'status')).toBe(true)
+    expect(lessonGitCalls.some(args => args[0] === 'commit')).toBe(false)
+  })
 })
 
 describe('runBatch', () => {

@@ -2,6 +2,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, writeFil
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
+import type { RunGit } from '../src/git-workspace.ts'
 import {
   DEFAULT_LESSON_MODEL,
   LESSON_DEDUP_SYSTEM_PROMPT,
@@ -9,6 +10,8 @@ import {
   assessLessonDedup,
   parseLessonDedupText,
   shouldSkipLessonDraft,
+  tryDraftLessonAfterDone,
+  type LessonDraftAfterDoneInput,
 } from '../src/lesson-draft.ts'
 import { loadLessonIndex, selectDedupRows, type LessonIndex } from '../src/lesson-index.ts'
 
@@ -684,5 +687,258 @@ describe('applyLessonDedupAction', () => {
       agentSummary: '改',
     })
     expect(existsSync(join(dir, 'pending', 't10.md'))).toBe(true)
+  })
+
+  it('treats optimize as skip when pendingId is not a safe filename', () => {
+    // String(1e21) is "1e+21"; `+` is not allowed in pending/*.md stems.
+    const dir = writeLessonRepo()
+    const before = readFileSync(join(dir, 'index.yaml'), 'utf8')
+    applyLessonDedupAction({
+      localRoot: dir,
+      index: loadLessonIndex(dir),
+      action: 'optimize',
+      existingId: 't2',
+      ticketId: 1e21,
+      targetMenu: MENU,
+      symptom: '不应写入',
+      mrUrl: 'http://mr/10',
+      changedFiles: ['src/a.vue'],
+      agentSummary: '无',
+    })
+    expect(readdirSync(join(dir, 'pending'))).toEqual([])
+    expect(readFileSync(join(dir, 'index.yaml'), 'utf8')).toBe(before)
+  })
+})
+
+/** Record git argv; porcelain defaults to a clean lessons clone. */
+function recordingLessonsGit(porcelain = ''): { runGit: RunGit; calls: string[][] } {
+  const calls: string[][] = []
+  const runGit: RunGit = async (_cwd, args) => {
+    calls.push([...args])
+    if (args[0] === 'status' && args[1] === '--porcelain') return porcelain
+    if (args[0] === 'add' || args[0] === 'commit' || args[0] === 'push') return ''
+    throw new Error(`unexpected ${args.join(' ')}`)
+  }
+  return { runGit, calls }
+}
+
+/** Default tryDraftLessonAfterDone payload against an empty index clone. */
+function afterDoneInput(
+  localRoot: string,
+  overrides?: Partial<LessonDraftAfterDoneInput>,
+): LessonDraftAfterDoneInput {
+  return {
+    localRoot,
+    ticketId: 10,
+    targetMenu: MENU,
+    mrUrl: 'http://mr/10',
+    changedFiles: ['src/a.vue'],
+    agentSummary: '按钮无响应，已改 click',
+    ticketDescription: '打开菜单点击无效',
+    apiKey: 'sk-test',
+    runGit: undefined,
+    baseURL: undefined,
+    model: undefined,
+    ...overrides,
+  }
+}
+
+describe('tryDraftLessonAfterDone', () => {
+  it('returns ok false when runGit is omitted and never throws', async () => {
+    const dir = writeLessonRepo('lessons: []\n')
+    await expect(tryDraftLessonAfterDone(afterDoneInput(dir))).resolves.toMatchObject({ ok: false })
+  })
+
+  it('returns ok false when the lessons clone is already dirty', async () => {
+    const dir = writeLessonRepo('lessons: []\n')
+    const { runGit, calls } = recordingLessonsGit(' M index.yaml\n')
+    await expect(
+      tryDraftLessonAfterDone(afterDoneInput(dir, { runGit })),
+    ).resolves.toMatchObject({ ok: false })
+    expect(calls.some(args => args[0] === 'commit')).toBe(false)
+  })
+
+  it('skips commit when the ticket is already in the index', async () => {
+    const dir = writeLessonRepo(`lessons:
+  - { id: t10, status: pending, target_menu: ${MENU}, symptom: x, ticketId: 10, mrUrl: u, updatedAt: '2026-01-01T00:00:00.000Z' }
+`)
+    expect(
+      shouldSkipLessonDraft({
+        targetMenu: MENU,
+        ticketId: 10,
+        changedFiles: ['src/a.vue'],
+        index: loadLessonIndex(dir),
+      }).skip,
+    ).toBe(true)
+    const { runGit, calls } = recordingLessonsGit('')
+    await expect(
+      tryDraftLessonAfterDone(afterDoneInput(dir, { runGit })),
+    ).resolves.toMatchObject({ ok: true })
+    expect(calls.some(args => args[0] === 'commit')).toBe(false)
+  })
+
+  it('returns ok false when assessLessonDedup fails (empty apiKey)', async () => {
+    const dir = writeLessonRepo('lessons: []\n')
+    const { runGit, calls } = recordingLessonsGit('')
+    await expect(
+      tryDraftLessonAfterDone(afterDoneInput(dir, { runGit, apiKey: '' })),
+    ).resolves.toMatchObject({ ok: false })
+    expect(calls.some(args => args[0] === 'commit')).toBe(false)
+  })
+
+  it('does not commit when the model action is skip', async () => {
+    const dir = writeLessonRepo('lessons: []\n')
+    const { runGit, calls } = recordingLessonsGit('')
+    const original = globalThis.fetch
+    globalThis.fetch = vi.fn(async () => chatResponse('{"action":"skip","reason":"同"}')) as unknown as typeof fetch
+    try {
+      await expect(
+        tryDraftLessonAfterDone(afterDoneInput(dir, { runGit })),
+      ).resolves.toMatchObject({ ok: true })
+    } finally {
+      globalThis.fetch = original
+    }
+    expect(calls.some(args => args[0] === 'commit')).toBe(false)
+    expect(readdirSync(join(dir, 'pending'))).toEqual([])
+  })
+
+  it('commits a create draft and uses the stripped first-line symptom', async () => {
+    const dir = writeLessonRepo('lessons: []\n')
+    const { runGit, calls } = recordingLessonsGit('')
+    const original = globalThis.fetch
+    const longLine = `第一行症状 sk-secretKEY ${'x'.repeat(80)}`
+    globalThis.fetch = vi.fn(async (_url: string, init?: RequestInit) => {
+      const body = JSON.parse(String(init?.body)) as { messages: Array<{ content: string }> }
+      expect(body.messages[1]?.content).toContain('第一行症状')
+      expect(body.messages[1]?.content).not.toContain('sk-')
+      expect(body.messages[1]?.content).not.toContain('第二行')
+      expect((body.messages[1]?.content.match(/症状: (.*)/) ?? [])[1]?.length).toBeLessThanOrEqual(80)
+      return chatResponse('{"action":"create","reason":"新"}')
+    }) as unknown as typeof fetch
+    try {
+      await expect(
+        tryDraftLessonAfterDone(
+          afterDoneInput(dir, {
+            runGit,
+            agentSummary: `${longLine}\n第二行忽略`,
+          }),
+        ),
+      ).resolves.toMatchObject({ ok: true })
+    } finally {
+      globalThis.fetch = original
+    }
+    expect(calls.some(args => args[0] === 'commit' && args.includes('docs: lesson t10'))).toBe(true)
+    const body = readFileSync(join(dir, 'pending', 't10.md'), 'utf8')
+    expect(body).toContain('第一行症状')
+    expect(body).not.toContain('sk-')
+    const symptomLine = body.split('\n').find(line => line.startsWith('症状:'))
+    expect(symptomLine).toBeDefined()
+    expect(symptomLine).not.toContain('第二行忽略')
+    expect((symptomLine ?? '').length).toBeLessThanOrEqual('症状: '.length + 80)
+  })
+
+  it('returns ok false when commitAndPushLessons fails', async () => {
+    const dir = writeLessonRepo('lessons: []\n')
+    const runGit: RunGit = async (_cwd, args) => {
+      if (args[0] === 'status' && args[1] === '--porcelain') return ''
+      if (args[0] === 'add') return ''
+      if (args[0] === 'commit') throw new Error('protected')
+      throw new Error(`unexpected ${args.join(' ')}`)
+    }
+    const original = globalThis.fetch
+    globalThis.fetch = vi.fn(async () => chatResponse('{"action":"create","reason":"新"}')) as unknown as typeof fetch
+    try {
+      await expect(
+        tryDraftLessonAfterDone(afterDoneInput(dir, { runGit })),
+      ).resolves.toMatchObject({ ok: false, error: 'protected' })
+    } finally {
+      globalThis.fetch = original
+    }
+  })
+
+  it('returns ok false without throwing when index.yaml cannot be read', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'ldraft-eisdir-'))
+    mkdirSync(join(dir, 'index.yaml'), { recursive: true })
+    const { runGit, calls } = recordingLessonsGit('')
+    await expect(
+      tryDraftLessonAfterDone(afterDoneInput(dir, { runGit })),
+    ).resolves.toMatchObject({ ok: false })
+    expect(calls.some(args => args[0] === 'commit')).toBe(false)
+  })
+
+  it('returns ok false without throwing when a non-Error is thrown', async () => {
+    const dir = writeLessonRepo('lessons: []\n')
+    const { runGit, calls } = recordingLessonsGit('')
+    const input = afterDoneInput(dir, { runGit })
+    Object.defineProperty(input, 'agentSummary', {
+      get(): string {
+        throw 'symptom-boom'
+      },
+    })
+    await expect(tryDraftLessonAfterDone(input)).resolves.toEqual({
+      ok: false,
+      error: 'symptom-boom',
+    })
+    expect(calls.some(args => args[0] === 'commit')).toBe(false)
+  })
+
+  it('returns ok false without throwing when apply cannot write pending', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'ldraft-pending-file-'))
+    writeFileSync(join(dir, 'index.yaml'), 'lessons: []\n')
+    writeFileSync(join(dir, 'pending'), 'not-a-dir')
+    const { runGit, calls } = recordingLessonsGit('')
+    const original = globalThis.fetch
+    globalThis.fetch = vi.fn(async () => chatResponse('{"action":"create","reason":"新"}')) as unknown as typeof fetch
+    try {
+      await expect(
+        tryDraftLessonAfterDone(afterDoneInput(dir, { runGit })),
+      ).resolves.toMatchObject({ ok: false })
+    } finally {
+      globalThis.fetch = original
+    }
+    expect(calls.some(args => args[0] === 'commit')).toBe(false)
+  })
+
+  it('commits an optimize draft when the model returns a valid accepted id', async () => {
+    const dir = writeLessonRepo()
+    const { runGit, calls } = recordingLessonsGit('')
+    const original = globalThis.fetch
+    globalThis.fetch = vi.fn(async () =>
+      chatResponse('{"action":"optimize","existing_id":"t2","reason":"补路径"}'),
+    ) as unknown as typeof fetch
+    try {
+      await expect(
+        tryDraftLessonAfterDone(afterDoneInput(dir, { runGit })),
+      ).resolves.toMatchObject({ ok: true })
+    } finally {
+      globalThis.fetch = original
+    }
+    expect(calls.some(args => args[0] === 'commit')).toBe(true)
+    expect(existsSync(join(dir, 'pending', 'opt-t2-10.md'))).toBe(true)
+  })
+
+  it('passes baseURL and model through to assessLessonDedup', async () => {
+    const dir = writeLessonRepo('lessons: []\n')
+    const { runGit } = recordingLessonsGit('')
+    const original = globalThis.fetch
+    const fetchImpl = vi.fn(async (url: string, init?: RequestInit) => {
+      expect(url).toBe('https://lesson.example/v1/chat/completions')
+      const body = JSON.parse(String(init?.body)) as { model: string }
+      expect(body.model).toBe('deepseek-reasoner')
+      return chatResponse('{"action":"skip","reason":"同"}')
+    })
+    globalThis.fetch = fetchImpl as unknown as typeof fetch
+    try {
+      await tryDraftLessonAfterDone(
+        afterDoneInput(dir, {
+          runGit,
+          baseURL: 'https://lesson.example/v1/',
+          model: 'deepseek-reasoner',
+        }),
+      )
+    } finally {
+      globalThis.fetch = original
+    }
+    expect(fetchImpl).toHaveBeenCalledTimes(1)
   })
 })
