@@ -1021,7 +1021,6 @@ skills:
       created: true,
     }))
     const addMrNote = vi.fn(async () => undefined)
-    const draft = vi.fn(async () => ({ ok: true }))
 
     const outcome = await runOneTicket(
       baseConfig({ client, agentRunner, runGit, ensureMr, addMrNote }),
@@ -1029,7 +1028,9 @@ skills:
     )
 
     expect(outcome).toEqual({ kind: 'done', mrUrl: 'http://gitlab.example.com/mr/1' })
-    expect(draft).not.toHaveBeenCalled()
+    // config.lessons omitted: a local draft spy is never passed in. Git ran only
+    // against the product clone, so the lessons warehouse was never committed.
+    expect(gitCwds.length).toBeGreaterThan(0)
     expect(gitCwds.every(cwd => cwd === CUSTOM_ROOT)).toBe(true)
   })
 
@@ -1094,16 +1095,28 @@ skills:
 
   it('keeps kind done when lesson draft throws or returns ok false', async () => {
     const ticket = detail({ id: 428, target_menu: '资产核查' })
-    const drafts = [
-      async () => {
-        throw new Error('draft boom')
+    const cases: Array<{
+      draft: () => Promise<{ ok: boolean; error?: string }>
+      logDetail: string
+    }> = [
+      {
+        draft: async () => {
+          throw new Error('draft boom')
+        },
+        logDetail: 'draft boom',
       },
-      async () => {
-        throw 'draft string'
+      {
+        draft: async () => {
+          throw 'draft string'
+        },
+        logDetail: 'draft string',
       },
-      async () => ({ ok: false as const, error: 'nope' }),
+      {
+        draft: async () => ({ ok: false as const, error: 'push failed' }),
+        logDetail: 'push failed',
+      },
     ]
-    for (const draft of drafts) {
+    for (const { draft, logDetail } of cases) {
       const lessonsDir = mkdtempSync(join(tmpdir(), 'orch-lessons-fail-'))
       writeFileSync(join(lessonsDir, 'index.yaml'), 'lessons: []\n')
       const { client } = fakeClient({})
@@ -1123,20 +1136,26 @@ skills:
       const addMrNote = vi.fn(async () => undefined)
 
       const draftSpy = vi.fn(draft)
-      const outcome = await runOneTicket(
-        baseConfig({
-          client,
-          agentRunner,
-          runGit,
-          ensureMr,
-          addMrNote,
-          lessons: { local: lessonsDir, injectMax: 3, draft: draftSpy },
-        }),
-        ticket,
-      )
+      const writeSpy = vi.spyOn(process.stdout, 'write')
+      try {
+        const outcome = await runOneTicket(
+          baseConfig({
+            client,
+            agentRunner,
+            runGit,
+            ensureMr,
+            addMrNote,
+            lessons: { local: lessonsDir, injectMax: 3, draft: draftSpy },
+          }),
+          ticket,
+        )
 
-      expect(draftSpy).toHaveBeenCalledTimes(1)
-      expect(outcome).toEqual({ kind: 'done', mrUrl: 'http://gitlab.example.com/mr/1' })
+        expect(draftSpy).toHaveBeenCalledTimes(1)
+        expect(outcome).toEqual({ kind: 'done', mrUrl: 'http://gitlab.example.com/mr/1' })
+        expect(writeSpy).toHaveBeenCalledWith(`经验起草失败（修单仍成功）：${logDetail}\n`)
+      } finally {
+        writeSpy.mockRestore()
+      }
     }
   })
 

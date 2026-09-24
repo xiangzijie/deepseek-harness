@@ -542,7 +542,7 @@ export async function runOneTicket(
     if (config.lessons !== undefined) {
       const draft = config.lessons.draft ?? tryDraftLessonAfterDone
       try {
-        await draft({
+        const result = await draft({
           localRoot: config.lessons.local,
           ticketId: detail.id,
           targetMenu: resolved.targetMenu,
@@ -555,9 +555,11 @@ export async function runOneTicket(
           baseURL: config.lessons.baseURL,
           model: config.lessons.model,
         })
+        if (result.ok === false) {
+          logLessonDraftFailure(result.error ?? '')
+        }
       } catch (error) {
-        // Lesson draft failed: keep ticket outcome done; do not fail the MR.
-        void errorMessage(error)
+        logLessonDraftFailure(errorMessage(error))
       }
     }
     return { kind: 'done', mrUrl: mr.webUrl }
@@ -929,6 +931,15 @@ function upsertPhase(
     record.mrUrl = partial.mrUrl
   }
   config.stateStore.upsert(record)
+}
+
+/**
+ * Write one Chinese stdout line when post-done lesson draft fails.
+ * Ticket outcome stays `done`; never log apiKey or request bodies.
+ * @param detail - caller-safe error text (no secrets).
+ */
+function logLessonDraftFailure(detail: string): void {
+  process.stdout.write(`经验起草失败（修单仍成功）：${detail}\n`)
 }
 
 /**

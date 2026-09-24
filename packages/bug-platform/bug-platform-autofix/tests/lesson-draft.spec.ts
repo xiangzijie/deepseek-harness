@@ -899,6 +899,25 @@ describe('tryDraftLessonAfterDone', () => {
     expect(calls.some(args => args[0] === 'commit')).toBe(false)
   })
 
+  it('does not commit when optimize is treated as skip', async () => {
+    const dir = writeLessonRepo()
+    const { runGit, calls } = recordingLessonsGit('')
+    const original = globalThis.fetch
+    globalThis.fetch = vi.fn(async () =>
+      chatResponse('{"action":"optimize","existing_id":"t4","reason":"错菜单"}'),
+    ) as unknown as typeof fetch
+    try {
+      await expect(
+        tryDraftLessonAfterDone(afterDoneInput(dir, { runGit })),
+      ).resolves.toMatchObject({ ok: true })
+    } finally {
+      globalThis.fetch = original
+    }
+    expect(calls.some(args => args[0] === 'commit')).toBe(false)
+    expect(calls.some(args => args[0] === 'add')).toBe(false)
+    expect(existsSync(join(dir, 'pending', 'opt-t4-10.md'))).toBe(false)
+  })
+
   it('commits an optimize draft when the model returns a valid accepted id', async () => {
     const dir = writeLessonRepo()
     const { runGit, calls } = recordingLessonsGit('')

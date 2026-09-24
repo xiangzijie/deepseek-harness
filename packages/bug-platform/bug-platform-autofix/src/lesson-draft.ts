@@ -431,11 +431,13 @@ function writePendingLesson(
 
 /**
  * Write pending/optimize markdown and append the matching index row; skip writes nothing.
+ * Invalid optimize (missing/unsafe existingId) is treated as skip.
  * @param input - action, ticket fields, and the index batch used to validate optimize ids.
+ * @returns true when a pending/optimize file and index row were written; false when nothing was written.
  */
-export function applyLessonDedupAction(input: ApplyLessonDedupActionInput): void {
+export function applyLessonDedupAction(input: ApplyLessonDedupActionInput): boolean {
   if (input.action === 'skip') {
-    return
+    return false
   }
   if (input.action === 'optimize') {
     const acceptedIds = new Set(
@@ -445,16 +447,17 @@ export function applyLessonDedupAction(input: ApplyLessonDedupActionInput): void
     )
     const existingId = input.existingId ?? ''
     if (!acceptedIds.has(existingId) || !isSafeLessonFilenameId(existingId)) {
-      return
+      return false
     }
     const pendingId = `opt-${existingId}-${input.ticketId}`
     if (!isSafeLessonFilenameId(pendingId)) {
-      return
+      return false
     }
     writePendingLesson(input, pendingId, 'optimize', existingId)
-    return
+    return true
   }
   writePendingLesson(input, `t${input.ticketId}`, 'pending')
+  return true
 }
 
 /** Inputs for {@link tryDraftLessonAfterDone} after a successful ticket MR. */
@@ -547,7 +550,7 @@ export async function tryDraftLessonAfterDone(
     if (!assessed.ok) {
       return { ok: false }
     }
-    applyLessonDedupAction({
+    const wrote = applyLessonDedupAction({
       localRoot: input.localRoot,
       index,
       action: assessed.action,
@@ -560,7 +563,7 @@ export async function tryDraftLessonAfterDone(
       agentSummary: input.agentSummary,
       ticketDescription: input.ticketDescription,
     })
-    if (assessed.action === 'skip') {
+    if (!wrote) {
       return { ok: true }
     }
     const committed = await commitAndPushLessons({
