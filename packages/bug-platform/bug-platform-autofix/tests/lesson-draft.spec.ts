@@ -286,7 +286,7 @@ describe('assessLessonDedup', () => {
           text: async () => {
             throw new Error('body-fail')
           },
-        }) as Response) as unknown as typeof fetch,
+        }) as unknown as Response) as unknown as typeof fetch,
     })
     expect(result.ok).toBe(false)
   })
@@ -300,7 +300,7 @@ describe('assessLessonDedup', () => {
           json: async () => {
             throw new Error('not-json')
           },
-        }) as Response) as unknown as typeof fetch,
+        }) as unknown as Response) as unknown as typeof fetch,
     })
     expect(result.ok).toBe(false)
   })
@@ -314,7 +314,7 @@ describe('assessLessonDedup', () => {
           json: async () => {
             throw 'bad-json'
           },
-        }) as Response) as unknown as typeof fetch,
+        }) as unknown as Response) as unknown as typeof fetch,
     })
     expect(result.ok).toBe(false)
   })

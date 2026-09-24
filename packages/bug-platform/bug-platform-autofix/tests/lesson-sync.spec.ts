@@ -46,6 +46,9 @@ describe('commitAndPushLessons', () => {
       runGit,
     })
     expect(out.ok).toBe(false)
+    if (out.ok) {
+      throw new Error('expected HEAD-not-main to fail open')
+    }
     expect(out.error).toMatch(/main/)
     const verbs = runGit.mock.calls.map(([, args]) => args[0])
     expect(verbs).not.toContain('add')
@@ -78,6 +81,9 @@ describe('commitAndPushLessons', () => {
       runGit,
     })
     expect(out.ok).toBe(false)
+    if (out.ok) {
+      throw new Error('expected push failure to fail open')
+    }
     expect(out.error).toContain('protected')
   })
 
