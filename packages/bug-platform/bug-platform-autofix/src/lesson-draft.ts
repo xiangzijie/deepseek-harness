@@ -15,7 +15,7 @@ import {
   type LessonIndexRow,
   type LessonStatus,
 } from './lesson-index.ts'
-import { commitAndPushLessons, lessonsWorkingTreeDirty } from './lesson-sync.ts'
+import { commitAndPushLessons, lessonsWorkingTreeDirty, requireLessonsHeadMain } from './lesson-sync.ts'
 
 /** Default wire model id for lesson dedup chat. */
 export const DEFAULT_LESSON_MODEL = 'deepseek-chat'
@@ -503,6 +503,7 @@ function lessonSymptomFromSummary(agentSummary: string): string {
 /**
  * Cheap-skip, dedup, write pending, and commit/push after `kind === 'done'`.
  * Fail-open: every step returns `{ ok: false }` instead of throwing.
+ * HEAD must be `main` (after the dirty check); off-main skips drafting without writing files.
  * @param input - lessons clone, ticket fields, git runner, and dedup API options.
  * @returns `{ ok: true }` when skipped or drafted; `{ ok: false }` when drafting cannot proceed.
  */
@@ -516,6 +517,10 @@ export async function tryDraftLessonAfterDone(
     }
     if (await lessonsWorkingTreeDirty({ localRoot: input.localRoot, runGit })) {
       return { ok: false, error: 'lessons working tree is dirty' }
+    }
+    const head = await requireLessonsHeadMain({ localRoot: input.localRoot, runGit })
+    if (!head.ok) {
+      return head
     }
     const index = loadLessonIndex(input.localRoot)
     if (

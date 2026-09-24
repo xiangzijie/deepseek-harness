@@ -168,7 +168,7 @@ export type { AcceptedLessonBody, LoadAcceptedLessonBodiesOptions } from './less
 export { loadAcceptedLessonBodies } from './lesson-inject.ts'
 
 export type { LessonSyncErr, LessonSyncOk, LessonSyncResult } from './lesson-sync.ts'
-export { commitAndPushLessons, lessonsWorkingTreeDirty, pullLessonsFf } from './lesson-sync.ts'
+export { commitAndPushLessons, lessonsWorkingTreeDirty, pullLessonsFf, requireLessonsHeadMain } from './lesson-sync.ts'
 
 export type {
   ApplyLessonDedupActionInput,

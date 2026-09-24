@@ -33,9 +33,42 @@ describe('pullLessonsFf', () => {
 })
 
 describe('commitAndPushLessons', () => {
+  it('returns ok false without add/commit/push when HEAD is not main', async () => {
+    const runGit = vi.fn(async (_cwd: string, args: readonly string[]) => {
+      if (args[0] === 'rev-parse' && args[1] === '--abbrev-ref' && args[2] === 'HEAD') {
+        return 'feature/x\n'
+      }
+      throw new Error(`unexpected ${args.join(' ')}`)
+    })
+    const out = await commitAndPushLessons({
+      localRoot: 'D:/L',
+      message: 'docs: lesson t10',
+      runGit,
+    })
+    expect(out.ok).toBe(false)
+    expect(out.error).toMatch(/main/)
+    const verbs = runGit.mock.calls.map(([, args]) => args[0])
+    expect(verbs).not.toContain('add')
+    expect(verbs).not.toContain('commit')
+    expect(verbs).not.toContain('push')
+  })
+
+  it('returns ok false when rev-parse throws and does not add', async () => {
+    const runGit = vi.fn().mockRejectedValue(new Error('not a git repo'))
+    const out = await commitAndPushLessons({
+      localRoot: 'D:/L',
+      message: 'docs: lesson t10',
+      runGit,
+    })
+    expect(out).toEqual({ ok: false, error: 'not a git repo' })
+    expect(runGit).toHaveBeenCalledTimes(1)
+    expect(runGit).toHaveBeenCalledWith('D:/L', ['rev-parse', '--abbrev-ref', 'HEAD'])
+  })
+
   it('returns ok false when push throws', async () => {
     const runGit = vi
       .fn()
+      .mockResolvedValueOnce('main\n') // HEAD
       .mockResolvedValueOnce('') // add
       .mockResolvedValueOnce('') // commit
       .mockRejectedValueOnce(new Error('protected'))
@@ -49,7 +82,12 @@ describe('commitAndPushLessons', () => {
   })
 
   it('adds, commits, pushes origin main and returns ok true on success', async () => {
-    const runGit = vi.fn().mockResolvedValue('')
+    const runGit = vi.fn(async (_cwd: string, args: readonly string[]) => {
+      if (args[0] === 'rev-parse' && args[1] === '--abbrev-ref' && args[2] === 'HEAD') {
+        return 'main\n'
+      }
+      return ''
+    })
     await expect(
       commitAndPushLessons({
         localRoot: 'D:/L',
@@ -57,27 +95,32 @@ describe('commitAndPushLessons', () => {
         runGit,
       }),
     ).resolves.toEqual({ ok: true })
-    expect(runGit).toHaveBeenNthCalledWith(1, 'D:/L', ['add', '-A'])
-    expect(runGit).toHaveBeenNthCalledWith(2, 'D:/L', ['commit', '-m', 'docs: lesson t10'])
-    expect(runGit).toHaveBeenNthCalledWith(3, 'D:/L', ['push', 'origin', 'main'])
+    expect(runGit).toHaveBeenNthCalledWith(1, 'D:/L', ['rev-parse', '--abbrev-ref', 'HEAD'])
+    expect(runGit).toHaveBeenNthCalledWith(2, 'D:/L', ['add', '-A'])
+    expect(runGit).toHaveBeenNthCalledWith(3, 'D:/L', ['commit', '-m', 'docs: lesson t10'])
+    expect(runGit).toHaveBeenNthCalledWith(4, 'D:/L', ['push', 'origin', 'main'])
   })
 
   it('returns ok false when add throws', async () => {
-    const runGit = vi.fn().mockRejectedValue(new Error('add failed'))
+    const runGit = vi.fn().mockResolvedValueOnce('main\n').mockRejectedValueOnce(new Error('add failed'))
     await expect(
       commitAndPushLessons({ localRoot: 'D:/L', message: 'm', runGit }),
     ).resolves.toEqual({ ok: false, error: 'add failed' })
   })
 
   it('returns ok false when commit throws', async () => {
-    const runGit = vi.fn().mockResolvedValueOnce('').mockRejectedValueOnce(new Error('nothing to commit'))
+    const runGit = vi
+      .fn()
+      .mockResolvedValueOnce('main\n')
+      .mockResolvedValueOnce('')
+      .mockRejectedValueOnce(new Error('nothing to commit'))
     await expect(
       commitAndPushLessons({ localRoot: 'D:/L', message: 'm', runGit }),
     ).resolves.toEqual({ ok: false, error: 'nothing to commit' })
   })
 
   it('maps non-Error rejections to String(error)', async () => {
-    const runGit = vi.fn().mockRejectedValue(404)
+    const runGit = vi.fn().mockResolvedValueOnce('main\n').mockRejectedValueOnce(404)
     await expect(
       commitAndPushLessons({ localRoot: 'D:/L', message: 'm', runGit }),
     ).resolves.toEqual({ ok: false, error: '404' })

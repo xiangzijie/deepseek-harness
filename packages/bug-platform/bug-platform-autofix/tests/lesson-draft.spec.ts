@@ -716,6 +716,7 @@ function recordingLessonsGit(porcelain = ''): { runGit: RunGit; calls: string[][
   const runGit: RunGit = async (_cwd, args) => {
     calls.push([...args])
     if (args[0] === 'status' && args[1] === '--porcelain') return porcelain
+    if (args[0] === 'rev-parse' && args[1] === '--abbrev-ref' && args[2] === 'HEAD') return 'main\n'
     if (args[0] === 'add' || args[0] === 'commit' || args[0] === 'push') return ''
     throw new Error(`unexpected ${args.join(' ')}`)
   }
@@ -747,6 +748,33 @@ describe('tryDraftLessonAfterDone', () => {
   it('returns ok false when runGit is omitted and never throws', async () => {
     const dir = writeLessonRepo('lessons: []\n')
     await expect(tryDraftLessonAfterDone(afterDoneInput(dir))).resolves.toMatchObject({ ok: false })
+  })
+
+  it('returns ok false without add/commit/push when HEAD is not main', async () => {
+    const dir = writeLessonRepo('lessons: []\n')
+    const calls: string[][] = []
+    const runGit: RunGit = async (_cwd, args) => {
+      calls.push([...args])
+      if (args[0] === 'rev-parse' && args[1] === '--abbrev-ref' && args[2] === 'HEAD') {
+        return 'feature/x\n'
+      }
+      if (args[0] === 'status' && args[1] === '--porcelain') return ''
+      if (args[0] === 'add' || args[0] === 'commit' || args[0] === 'push') return ''
+      throw new Error(`unexpected ${args.join(' ')}`)
+    }
+    const original = globalThis.fetch
+    globalThis.fetch = vi.fn(async () => chatResponse('{"action":"create","reason":"新"}')) as unknown as typeof fetch
+    try {
+      const out = await tryDraftLessonAfterDone(afterDoneInput(dir, { runGit }))
+      expect(out.ok).toBe(false)
+      expect(out.error).toMatch(/main/)
+    } finally {
+      globalThis.fetch = original
+    }
+    expect(calls.some(args => args[0] === 'add')).toBe(false)
+    expect(calls.some(args => args[0] === 'commit')).toBe(false)
+    expect(calls.some(args => args[0] === 'push')).toBe(false)
+    expect(readdirSync(join(dir, 'pending'))).toEqual([])
   })
 
   it('returns ok false when the lessons clone is already dirty', async () => {
@@ -841,6 +869,7 @@ describe('tryDraftLessonAfterDone', () => {
     const dir = writeLessonRepo('lessons: []\n')
     const runGit: RunGit = async (_cwd, args) => {
       if (args[0] === 'status' && args[1] === '--porcelain') return ''
+      if (args[0] === 'rev-parse' && args[1] === '--abbrev-ref' && args[2] === 'HEAD') return 'main\n'
       if (args[0] === 'add') return ''
       if (args[0] === 'commit') throw new Error('protected')
       throw new Error(`unexpected ${args.join(' ')}`)

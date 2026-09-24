@@ -13,7 +13,7 @@ export type LessonSyncOk = { ok: true }
 /** Failed lesson sync operation with a caller-safe message. */
 export type LessonSyncErr = { ok: false; error: string }
 
-/** Result of {@link pullLessonsFf} or {@link commitAndPushLessons}. */
+/** Result of {@link pullLessonsFf}, {@link requireLessonsHeadMain}, or {@link commitAndPushLessons}. */
 export type LessonSyncResult = LessonSyncOk | LessonSyncErr
 
 /**
@@ -48,8 +48,32 @@ export async function pullLessonsFf(options: {
 }
 
 /**
+ * Refuse lesson writes unless the clone HEAD is `main`. Never throws.
+ * {@link pullLessonsFf} does not call this, so fast-forward pull may still run off-main.
+ * @param options - lessons repo root and git runner.
+ * @param options.localRoot - absolute path of the lessons git worktree.
+ * @param options.runGit - git command injector.
+ * @returns `{ ok: true }` when HEAD is `main`; `{ ok: false, error }` with a Chinese message otherwise.
+ */
+export async function requireLessonsHeadMain(options: {
+  localRoot: string
+  runGit: RunGit
+}): Promise<LessonSyncResult> {
+  const { localRoot, runGit } = options
+  try {
+    const head = (await runGit(localRoot, ['rev-parse', '--abbrev-ref', 'HEAD'])).trim()
+    if (head === 'main') {
+      return { ok: true }
+    }
+    return { ok: false, error: `经验仓当前不在 main 分支（HEAD 为 ${head}）` }
+  } catch (error) {
+    return { ok: false, error: lessonSyncErrorMessage(error) }
+  }
+}
+
+/**
  * Stage all changes, commit with `message`, and push `origin main`.
- * Never throws; git failures return `{ ok: false, error }`.
+ * Refuses when HEAD is not `main` (no add/commit/push). Never throws; git failures return `{ ok: false, error }`.
  * @param options - lessons repo root, commit message, and git runner.
  * @param options.localRoot - absolute path of the lessons git worktree.
  * @param options.message - full `git commit -m` message.
@@ -62,6 +86,10 @@ export async function commitAndPushLessons(options: {
   runGit: RunGit
 }): Promise<LessonSyncResult> {
   const { localRoot, message, runGit } = options
+  const head = await requireLessonsHeadMain({ localRoot, runGit })
+  if (!head.ok) {
+    return head
+  }
   try {
     await runGit(localRoot, ['add', '-A'])
     await runGit(localRoot, ['commit', '-m', message])

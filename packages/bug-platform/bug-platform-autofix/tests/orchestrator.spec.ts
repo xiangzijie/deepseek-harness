@@ -1239,6 +1239,7 @@ skills:
     const lessonsRunGit: RunGit = async (_cwd, args) => {
       lessonGitCalls.push([...args])
       if (args[0] === 'status' && args[1] === '--porcelain') return ''
+      if (args[0] === 'rev-parse' && args[1] === '--abbrev-ref' && args[2] === 'HEAD') return 'main\n'
       throw new Error(`unexpected lessons git ${args.join(' ')}`)
     }
     const ensureMr = vi.fn(async () => ({
